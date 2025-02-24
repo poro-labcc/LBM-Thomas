@@ -30,7 +30,7 @@ struct LBMParams {
     LBMParams(int nx, int ny, int k) : Nx(nx), Ny(ny), K(k),
         f(K * Nx * Ny, 0.0), feq(K * Nx * Ny, 0.0), f_last(K * Nx * Ny, 0.0),
         f_temp(K * Nx * Ny, 0.0), rho(Nx * Ny, 0.0), u(Nx * Ny, 0.0), v(Nx * Ny, 0.0),
-        cx(K), cy(K), w(K), omega(), uo(), rhoo() {
+        cx(K), cy(K), w(K), omega(), uo(), rhoo(){
 
         cx = {0.0, 1.0, 0.0, -1.0, 0.0, 1.0, -1.0, -1.0, 1.0};
         cy = {0.0, 0.0, 1.0, 0.0, -1.0, 1.0, 1.0, -1.0, -1.0};
@@ -111,7 +111,6 @@ struct SimulationStats {
         Cl = 0.0;
         inletMassFlow = 0.0;
         outletMassFlow = 0.0;
-        relativeDifference = 1.0;
     }
 };
 
@@ -155,9 +154,10 @@ void Streaming(LBMParams& params) {
                 int xx = i + params.cx[k];
                 int yy = j + params.cy[k];
 
-                if (xx < 0) xx = Nx-1;
+                //if (xx < 0) xx = Nx-1;
+                //if (xx > Nx-1) xx = 0;
+                if (xx < 0 || xx > Nx-1) continue;
                 if (yy < 0) yy = Ny-1;
-                if (xx > Nx-1) xx = 0;
                 if (yy > Ny-1) yy = 0;
 
                 //Stream the post-collision value to its new location
@@ -212,9 +212,10 @@ void Boundary(LBMParams& params) {
 #pragma omp parallel for
     for(int j = 0; j < Ny; j++){
         for(int k = 0;k<K;k++){
-            params.f[index3D(k,Nx-1,j)] = (params.f_last[index3D(k,Nx-1,j)] + U * params.f[index3D(k,Nx-2,j)])/(1+U);
+            params.f[index3D(k,Nx-1,j)] = (params.f_last[index3D(k,Nx-1,j)] + U*params.f[index3D(k,Nx-2,j)])/(1+U);
         }
     }
+
 }
 
 void CubeBDC(LBMParams& params, const DomainParams& domain, SimulationStats& stats) {
@@ -225,21 +226,21 @@ void CubeBDC(LBMParams& params, const DomainParams& domain, SimulationStats& sta
 
     // Top and bottom edges
     for(int i = cube_start; i <= cube_end; i++) {
-        // Top edge
+        // Top edge (j_top)
         long double f4 = params.f[index3D(4, i, j_top)];
         long double f7 = params.f[index3D(7, i, j_top)];
         long double f8 = params.f[index3D(8, i, j_top)];
-        stats.Fx += 2.0 * (f4*0.0 + f7*(-1.0) + f8*1.0);
+        stats.Fx += 2.0 * (f7*(-1.0) + f8*1.0);
         stats.Fy += 2.0 * (f4*(-1.0) + f7*(-1.0) + f8*(-1.0));
         params.f[index3D(2,i,j_top)] = f4;
         params.f[index3D(5,i,j_top)] = f7;
         params.f[index3D(6,i,j_top)] = f8;
 
-        // Bottom edge
+        // Bottom edge (j_bottom)
         long double f2 = params.f[index3D(2, i, j_bottom)];
         long double f6 = params.f[index3D(6, i, j_bottom)];
         long double f5 = params.f[index3D(5, i, j_bottom)];
-        stats.Fx += 2.0 * (f2*0.0 + f6*(-1.0) + f5*1.0);
+        stats.Fx += 2.0 * (f6*(-1.0) + f5*1.0);
         stats.Fy += 2.0 * (f2*1.0 + f6*1.0 + f5*1.0);
         params.f[index3D(4,i,j_bottom)] = f2;
         params.f[index3D(8,i,j_bottom)] = f6;
@@ -248,21 +249,22 @@ void CubeBDC(LBMParams& params, const DomainParams& domain, SimulationStats& sta
 
     // Left and right edges
     for(int j = j_bottom; j <= j_top; j++) {
+        // Left edge (cube_start)
         long double f1 = params.f[index3D(1, cube_start, j)];
         long double f8 = params.f[index3D(8, cube_start, j)];
         long double f5 = params.f[index3D(5, cube_start, j)];
         stats.Fx += 2.0 * (f1*1.0 + f8*1.0 + f5*1.0);
-        stats.Fy += 2.0 * (f1*0.0 + f8*(-1.0) + f5*1.0);
+        stats.Fy += 2.0 * (f8*(-1.0) + f5*1.0);
         params.f[index3D(3,cube_start,j)] = f1;
         params.f[index3D(6,cube_start,j)] = f8;
         params.f[index3D(7,cube_start,j)] = f5;
 
-        // Right edge
+        // Right edge (cube_end)
         long double f3 = params.f[index3D(3, cube_end, j)];
         long double f6 = params.f[index3D(6, cube_end, j)];
         long double f7 = params.f[index3D(7, cube_end, j)];
         stats.Fx += 2.0 * (f3*(-1.0) + f6*(-1.0) + f7*(-1.0));
-        stats.Fy += 2.0 * (f3*0.0 + f6*1.0 + f7*(-1.0));
+        stats.Fy += 2.0 * (f6*1.0 + f7*(-1.0));
         params.f[index3D(1,cube_end,j)] = f3;
         params.f[index3D(8,cube_end,j)] = f6;
         params.f[index3D(5,cube_end,j)] = f7;
@@ -293,8 +295,8 @@ void MacroRecover(LBMParams& params, const DomainParams& dim, bool isCube) {
     #pragma omp parallel for collapse(2)
         for(int j= dim.middle - (dim.CubeD/2); j <= dim.middle + (dim.CubeD/2);j++){
             for(int i = dim.L1-(dim.CubeD/2); i <= dim.L1+(dim.CubeD/2); i++){
-                params.u[index2d(i,j)] = 0;
-                params.v[index2d(i,j)] = 0;
+                params.u[index2d(i,j)] = 0.0;
+                params.v[index2d(i,j)] = 0.0;
             }
         }
     }
@@ -336,21 +338,30 @@ void saveForce(SimulationStats& stats, const int time, int step){
 int main() {
     int CubeD = 40, L1 = 500;
 
-    int ReSet = 50;
-    double alpha = 0.03;
+    int ReSet = 60;
+    double alpha = 0.1;
 
     LBMParams params(Nx, Ny, K);
     params.uo = ReSet * alpha / CubeD;
     params.rhoo = 1.0;
     params.omega = 1.0/(3.*alpha+0.5);
 
-
     DomainParams domainParams(CubeD, L1, Ny);
+
     SimulationStats stats;
+
+    std::cout << "Re = " << ReSet << " ; Max. Velocity = " << params.uo << std::endl;
+    std::cout << "Omega = " << params.omega  << std::endl;
+
+
 
     Initialize(params);
     int mstep = 0;
-    while (stats.relativeDifference > 1e-8) {
+
+    //Start clock
+    auto start = std::chrono::high_resolution_clock::now();
+
+    while (mstep < 200000) {
         params.f_last = params.f;
 
         Colision(params);
@@ -376,7 +387,9 @@ int main() {
         stats.reset();
         mstep += 1;
     }
-
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end - start;
+    std::cout << "Execution time: " << duration.count() << " seconds" << std::endl;
     std::cout << "END OF SIMULATION!" << std::endl;
     return 0;
 }
