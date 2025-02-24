@@ -9,8 +9,8 @@
 #include <chrono> // Required for duration literals
 
 
-constexpr int Nx = 2001;
-constexpr int Ny = 321;
+constexpr int Nx = 2000;
+constexpr int Ny = 320;
 constexpr int K = 9;
 
 inline int index2d(int i, int j) {
@@ -44,7 +44,7 @@ struct DomainParams {
     int CubeD, L1, middle;
 
     DomainParams(int cubeD, int l1, int ny)
-        : CubeD(cubeD), L1(l1), middle((ny - 1) / 2) {}
+        : CubeD(cubeD), L1(l1), middle((ny) / 2) {}
 };
 
 struct SimulationStats {
@@ -172,7 +172,6 @@ void Boundary(LBMParams& params) {
     for (int j = 0; j < Ny; j++) {
         // Corrected velocity profile (positive flow to the right)
         long double vx = (6 * params.uo * (2./3.) / ((Ny-1) * (Ny-1))) * j * ((Ny-1) - j);
-
         // Corrected density formula (1 - vx[j])
         long double rhow = (params.f[index3D(0,0,j)] + params.f[index3D(2,0,j)] + params.f[index3D(4,0,j)]
                 + 2 * (params.f[index3D(3,0,j)] + params.f[index3D(6,0,j)] + params.f[index3D(7,0,j)])) / (1 - vx);
@@ -219,13 +218,13 @@ void Boundary(LBMParams& params) {
 }
 
 void CubeBDC(LBMParams& params, const DomainParams& domain, SimulationStats& stats) {
-    int cube_start = domain.L1 - domain.CubeD/2;
-    int cube_end = domain.L1 + domain.CubeD/2;
-    int j_top = domain.middle + domain.CubeD/2;
-    int j_bottom = domain.middle - domain.CubeD/2;
+    int cube_start = domain.L1 - domain.CubeD/2-1;
+    int cube_end = domain.L1 + domain.CubeD/2 ;
+    int j_top = domain.middle + domain.CubeD/2+1;
+    int j_bottom = domain.middle - domain.CubeD/2 ;
 
     // Top and bottom edges
-    for(int i = cube_start; i <= cube_end; i++) {
+    for(int i = cube_start+1; i < cube_end; i++) {
         // Top edge (j_top)
         long double f4 = params.f[index3D(4, i, j_top)];
         long double f7 = params.f[index3D(7, i, j_top)];
@@ -248,7 +247,7 @@ void CubeBDC(LBMParams& params, const DomainParams& domain, SimulationStats& sta
     }
 
     // Left and right edges
-    for(int j = j_bottom; j <= j_top; j++) {
+    for(int j = j_bottom+1; j < j_top; j++) {
         // Left edge (cube_start)
         long double f1 = params.f[index3D(1, cube_start, j)];
         long double f8 = params.f[index3D(8, cube_start, j)];
@@ -269,6 +268,12 @@ void CubeBDC(LBMParams& params, const DomainParams& domain, SimulationStats& sta
         params.f[index3D(8,cube_end,j)] = f6;
         params.f[index3D(5,cube_end,j)] = f7;
     }
+
+    //Dealing with corners
+    params.f[index3D(7,cube_start,j_bottom)] = params.f[index3D(5,cube_start,j_bottom)];
+    params.f[index3D(6,cube_start,j_top)] = params.f[index3D(8,cube_start,j_top)];
+    params.f[index3D(5,cube_end,j_top)] = params.f[index3D(7,cube_end,j_top)];
+    params.f[index3D(8,cube_end,j_bottom)] = params.f[index3D(6,cube_end,j_bottom)];
 }
 
 void MacroRecover(LBMParams& params, const DomainParams& dim, bool isCube) {
@@ -293,8 +298,8 @@ void MacroRecover(LBMParams& params, const DomainParams& dim, bool isCube) {
 
     if (isCube) {
     #pragma omp parallel for collapse(2)
-        for(int j= dim.middle - (dim.CubeD/2); j <= dim.middle + (dim.CubeD/2);j++){
-            for(int i = dim.L1-(dim.CubeD/2); i <= dim.L1+(dim.CubeD/2); i++){
+        for(int j= dim.middle - (dim.CubeD/2); j < dim.middle + (dim.CubeD/2);j++){
+            for(int i = dim.L1 - (dim.CubeD/2); i < dim.L1+(dim.CubeD/2); i++){
                 params.u[index2d(i,j)] = 0.0;
                 params.v[index2d(i,j)] = 0.0;
             }
