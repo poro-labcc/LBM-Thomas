@@ -217,7 +217,7 @@ void Boundary(LBMParams& params) {
 
 }
 
-void CubeBDC(LBMParams& params, const DomainParams& domain, SimulationStats& stats) {
+void CubeBDC(LBMParams& params, const DomainParams& domain) {
     int cube_start = domain.L1 - domain.CubeD/2-1;
     int cube_end = domain.L1 + domain.CubeD/2 ;
     int j_top = domain.middle + domain.CubeD/2+1;
@@ -229,8 +229,6 @@ void CubeBDC(LBMParams& params, const DomainParams& domain, SimulationStats& sta
         long double f4 = params.f[index3D(4, i, j_top)];
         long double f7 = params.f[index3D(7, i, j_top)];
         long double f8 = params.f[index3D(8, i, j_top)];
-        stats.Fx += 2.0 * (f7*(-1.0) + f8*1.0);
-        stats.Fy += 2.0 * (f4*(-1.0) + f7*(-1.0) + f8*(-1.0));
         params.f[index3D(2,i,j_top)] = f4;
         params.f[index3D(5,i,j_top)] = f7;
         params.f[index3D(6,i,j_top)] = f8;
@@ -239,8 +237,6 @@ void CubeBDC(LBMParams& params, const DomainParams& domain, SimulationStats& sta
         long double f2 = params.f[index3D(2, i, j_bottom)];
         long double f6 = params.f[index3D(6, i, j_bottom)];
         long double f5 = params.f[index3D(5, i, j_bottom)];
-        stats.Fx += 2.0 * (f6*(-1.0) + f5*1.0);
-        stats.Fy += 2.0 * (f2*1.0 + f6*1.0 + f5*1.0);
         params.f[index3D(4,i,j_bottom)] = f2;
         params.f[index3D(8,i,j_bottom)] = f6;
         params.f[index3D(7,i,j_bottom)] = f5;
@@ -252,8 +248,6 @@ void CubeBDC(LBMParams& params, const DomainParams& domain, SimulationStats& sta
         long double f1 = params.f[index3D(1, cube_start, j)];
         long double f8 = params.f[index3D(8, cube_start, j)];
         long double f5 = params.f[index3D(5, cube_start, j)];
-        stats.Fx += 2.0 * (f1*1.0 + f8*1.0 + f5*1.0);
-        stats.Fy += 2.0 * (f8*(-1.0) + f5*1.0);
         params.f[index3D(3,cube_start,j)] = f1;
         params.f[index3D(6,cube_start,j)] = f8;
         params.f[index3D(7,cube_start,j)] = f5;
@@ -262,8 +256,6 @@ void CubeBDC(LBMParams& params, const DomainParams& domain, SimulationStats& sta
         long double f3 = params.f[index3D(3, cube_end, j)];
         long double f6 = params.f[index3D(6, cube_end, j)];
         long double f7 = params.f[index3D(7, cube_end, j)];
-        stats.Fx += 2.0 * (f3*(-1.0) + f6*(-1.0) + f7*(-1.0));
-        stats.Fy += 2.0 * (f6*1.0 + f7*(-1.0));
         params.f[index3D(1,cube_end,j)] = f3;
         params.f[index3D(8,cube_end,j)] = f6;
         params.f[index3D(5,cube_end,j)] = f7;
@@ -307,6 +299,77 @@ void MacroRecover(LBMParams& params, const DomainParams& dim, bool isCube) {
     }
 }
 
+void ComputeForces(LBMParams& params, const DomainParams& domain, SimulationStats& stats) {
+    int cube_start = domain.L1 - domain.CubeD/2 - 1;
+    int cube_end = domain.L1 + domain.CubeD/2;
+    int j_top = domain.middle + domain.CubeD/2 + 1;
+    int j_bottom = domain.middle - domain.CubeD/2;
+
+    stats.Fx = 0.0;
+    stats.Fy = 0.0;
+
+    // =================================================
+    // Forças nas bordas superiores e inferiores
+    // =================================================
+    for(int i = cube_start + 1; i < cube_end; i++) {
+        // Borda superior (j_top)
+        long double f4 = params.f[index3D(4, i, j_top)];
+        long double f7 = params.f[index3D(7, i, j_top)];
+        long double f8 = params.f[index3D(8, i, j_top)];
+        stats.Fx += 2.0 * (f7*(-1.0) + f8*(1.0));  // ΔFx = 2*(f7*(-cx[7]) + f8*(cx[8]))
+        stats.Fy += 2.0 * (f4*(-1.0) + f7*(-1.0) + f8*(-1.0)); // ΔFy = 2*(f4*cy[4] + f7*cy[7] + f8*cy[8])
+
+        // Borda inferior (j_bottom)
+        long double f2 = params.f[index3D(2, i, j_bottom)];
+        long double f5 = params.f[index3D(5, i, j_bottom)];
+        long double f6 = params.f[index3D(6, i, j_bottom)];
+        stats.Fx += 2.0 * (f6*(-1.0) + f5*(1.0));  // ΔFx = 2*(f6*(-cx[6]) + f5*(cx[5]))
+        stats.Fy += 2.0 * (f2*(1.0) + f6*(1.0) + f5*(1.0)); // ΔFy = 2*(f2*cy[2] + f6*cy[6] + f5*cy[5])
+    }
+
+    // =================================================
+    // Forças nas bordas laterais (esquerda e direita)
+    // =================================================
+    for(int j = j_bottom + 1; j < j_top; j++) {
+        // Borda esquerda (cube_start)
+        long double f1 = params.f[index3D(1, cube_start, j)];
+        long double f5 = params.f[index3D(5, cube_start, j)];
+        long double f8 = params.f[index3D(8, cube_start, j)];
+        stats.Fx += 2.0 * (f1*(1.0) + f5*(1.0) + f8*(1.0)); // ΔFx = 2*(f1*cx[1] + f5*cx[5] + f8*cx[8])
+        stats.Fy += 2.0 * (f8*(-1.0) + f5*(1.0)); // ΔFy = 2*(f8*cy[8] + f5*cy[5])
+
+        // Borda direita (cube_end)
+        long double f3 = params.f[index3D(3, cube_end, j)];
+        long double f6 = params.f[index3D(6, cube_end, j)];
+        long double f7 = params.f[index3D(7, cube_end, j)];
+        stats.Fx += 2.0 * (f3*(-1.0) + f6*(-1.0) + f7*(-1.0)); // ΔFx = 2*(f3*cx[3] + f6*cx[6] + f7*cx[7])
+        stats.Fy += 2.0 * (f6*(1.0) + f7*(-1.0)); // ΔFy = 2*(f6*cy[6] + f7*cy[7])
+    }
+
+    // =================================================
+    // Forças nas quinas do cubo (contribuição adicional)
+    // =================================================
+    // Quina Inferior-Esquerda (cube_start, j_bottom)
+    long double f5_corner = params.f[index3D(5, cube_start, j_bottom)];
+    stats.Fx += 2.0 * f5_corner * 1.0;  // cx[5] = 1
+    stats.Fy += 2.0 * f5_corner * 1.0;  // cy[5] = 1
+
+    // Quina Superior-Esquerda (cube_start, j_top)
+    long double f8_corner = params.f[index3D(8, cube_start, j_top)];
+    stats.Fx += 2.0 * f8_corner * 1.0;   // cx[8] = 1
+    stats.Fy += 2.0 * f8_corner * (-1.0); // cy[8] = -1
+
+    // Quina Superior-Direita (cube_end, j_top)
+    long double f7_corner = params.f[index3D(7, cube_end, j_top)];
+    stats.Fx += 2.0 * f7_corner * (-1.0); // cx[7] = -1
+    stats.Fy += 2.0 * f7_corner * (-1.0); // cy[7] = -1
+
+    // Quina Inferior-Direita (cube_end, j_bottom)
+    long double f6_corner = params.f[index3D(6, cube_end, j_bottom)];
+    stats.Fx += 2.0 * f6_corner * (-1.0); // cx[6] = -1
+    stats.Fy += 2.0 * f6_corner * 1.0;    // cy[6] = 1
+}
+
 void saveField(LBMParams& params, const int time, int step) {
     if(time % step == 0){
         std::stringstream n;
@@ -343,7 +406,7 @@ void saveForce(SimulationStats& stats, const int time, int step){
 int main() {
     int CubeD = 40, L1 = 500;
 
-    int ReSet = 60;
+    int ReSet = 50;
     double alpha = 0.1;
 
     LBMParams params(Nx, Ny, K);
@@ -372,7 +435,8 @@ int main() {
         Colision(params);
         Streaming(params);
         Boundary(params);
-        CubeBDC(params, domainParams, stats);
+        ComputeForces(params,domainParams,stats);
+        CubeBDC(params, domainParams);
 
         MacroRecover(params,domainParams,true);
 
