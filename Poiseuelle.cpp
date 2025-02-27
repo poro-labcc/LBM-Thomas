@@ -9,8 +9,8 @@
 #include <chrono> // Required for duration literals
 
 
-constexpr int Nx = 2000;
-constexpr int Ny = 320;
+constexpr int Nx = 2001;
+constexpr int Ny = 321;
 constexpr int K = 9;
 
 inline int index2d(int i, int j) {
@@ -26,11 +26,12 @@ struct LBMParams {
     double omega, uo, rhoo;
     std::vector<long double> f, feq, f_last, f_temp, rho, u, v;
     std::vector<double> cx, cy, w;
+    std::vector<bool> isSolid;
 
     LBMParams(int nx, int ny, int k) : Nx(nx), Ny(ny), K(k),
         f(K * Nx * Ny, 0.0), feq(K * Nx * Ny, 0.0), f_last(K * Nx * Ny, 0.0),
         f_temp(K * Nx * Ny, 0.0), rho(Nx * Ny, 0.0), u(Nx * Ny, 0.0), v(Nx * Ny, 0.0),
-        cx(K), cy(K), w(K), omega(), uo(), rhoo(){
+        cx(K), cy(K), w(K), omega(), uo(), rhoo(), isSolid(Nx*Ny,false){
 
         cx = {0.0, 1.0, 0.0, -1.0, 0.0, 1.0, -1.0, -1.0, 1.0};
         cy = {0.0, 0.0, 1.0, 0.0, -1.0, 1.0, 1.0, -1.0, -1.0};
@@ -114,19 +115,35 @@ struct SimulationStats {
     }
 };
 
-void Initialize(LBMParams& params) {
-    for (int j = 0; j < Ny; j++) {
-        long double uinit = (6.0 * params.uo * (2.0 / 3.0)) / ((Ny - 1) * (Ny - 1)) * j * (Ny - 1 - j);
-        for (int i = 0; i < Nx; i++) {
-            params.rho[index2d(i, j)] = params.rhoo;
-            params.u[index2d(i, j)] = uinit;
-            params.v[index2d(i, j)] = 0.0;
+void Initialize(LBMParams& params, bool Parabolic) {
+    //Initializing arrays
+    if (Parabolic) {
+        for (int j = 0; j < Ny; j++) {
+            long double uinit = (6.0 * params.uo * (2.0 / 3.0)) / ((Ny-1) * (Ny-1)) * j * ((Ny-1) - j);
+            for (int i = 0; i < Nx; i++) {
+                params.rho[index2d(i, j)] = params.rhoo;
+                params.u[index2d(i, j)] = uinit;
+                params.v[index2d(i, j)] = 0.0;
 
-            long double t1 = params.u[index2d(i,j)] * params.u[index2d(i,j)] + params.v[index2d(i,j)] * params.v[index2d(i,j)];
-            for (int k = 0; k < K; k++) {
-                long double t2 = params.u[index2d(i,j)] * params.cx[k] + params.v[index2d(i,j)] * params.cy[k];
-                params.feq[index3D(k, i, j)] = params.rho[index2d(i, j)] * params.w[k] * (1.0 + 3.0 * t2 + 4.5 * t2 * t2 - 1.5 * t1);
-                params.f[index3D(k, i, j)] = params.feq[index3D(k, i, j)];
+                long double t1 = params.u[index2d(i,j)] * params.u[index2d(i,j)] + params.v[index2d(i,j)] * params.v[index2d(i,j)];
+                for (int k = 0; k < K; k++) {
+                    long double t2 = params.u[index2d(i,j)] * params.cx[k] + params.v[index2d(i,j)] * params.cy[k];
+                    params.feq[index3D(k, i, j)] = params.rho[index2d(i, j)] * params.w[k] * (1.0 + 3.0 * t2 + 4.5 * t2 * t2 - 1.5 * t1);
+                    params.f[index3D(k, i, j)] = params.feq[index3D(k, i, j)];
+                }
+            }
+        }
+    }else {
+#pragma omp parallel for collapse(2)
+        for(int j=0; j < Ny; j++){
+            for(int i=0; i < Nx; i++){
+                params.rho[index2d(i,j)] = params.rhoo;
+                params.u[index2d(i,j)] = 0;
+                params.v[index2d(i,j)] = 0;
+                for(int k=0; k < K; k++){
+                    params.feq[index3D(k,i,j)] = params.rho[index2d(i,j)]*params.w[k];
+                    params.f[index3D(k,i,j)] = params.feq[index3D(k,i,j)];
+                }
             }
         }
     }
@@ -147,31 +164,28 @@ void Colision(LBMParams& params) {
 }
 
 void Streaming(LBMParams& params) {
-    #pragma omp parallel for collapse(2)
-    for(int i=0; i < Nx; i++){
-        for(int j=0; j < Ny; j++){
-            for(int k=0; k < K; k++){
+    std::vector<int> ops_k = {0,3,4,1,2,7,8,5,6};
+#pragma omp parallel for collapse(2)
+    for(int i = 0; i < Nx; i++) {
+        for(int j = 0; j < Ny; j++) {
+            for(int k = 0; k < K; k++) {
                 int xx = i + params.cx[k];
                 int yy = j + params.cy[k];
 
-                //if (xx < 0) xx = Nx-1;
-                //if (xx > Nx-1) xx = 0;
                 if (xx < 0 || xx > Nx-1) continue;
-                if (yy < 0) yy = Ny-1;
-                if (yy > Ny-1) yy = 0;
+                if (yy < 0 || yy > Ny-1) continue;
 
-                //Stream the post-collision value to its new location
                 params.f_temp[index3D(k,xx,yy)] = params.f[index3D(k,i,j)];
             }
         }
     }
-    std::swap(params.f, params.f_temp);
+    params.f = params.f_temp;
 }
 
 void Boundary(LBMParams& params) {
     for (int j = 0; j < Ny; j++) {
         // Corrected velocity profile (positive flow to the right)
-        long double vx = (6 * params.uo * (2./3.) / ((Ny-1) * (Ny-1))) * j * ((Ny-1) - j);
+        long double vx =  (6.0 * params.uo * (2.0 / 3.0)) / ((Ny-1) * (Ny-1)) * j * ((Ny-1) - j);
         // Corrected density formula (1 - vx[j])
         long double rhow = (params.f[index3D(0,0,j)] + params.f[index3D(2,0,j)] + params.f[index3D(4,0,j)]
                 + 2 * (params.f[index3D(3,0,j)] + params.f[index3D(6,0,j)] + params.f[index3D(7,0,j)])) / (1 - vx);
@@ -218,54 +232,57 @@ void Boundary(LBMParams& params) {
 }
 
 void CubeBDC(LBMParams& params, const DomainParams& domain) {
-    int cube_start = domain.L1 - domain.CubeD/2-1;
-    int cube_end = domain.L1 + domain.CubeD/2 ;
-    int j_top = domain.middle + domain.CubeD/2+1;
-    int j_bottom = domain.middle - domain.CubeD/2 ;
+    int cube_start = domain.L1 - domain.CubeD/2; //480
+    int cube_end = domain.L1 + domain.CubeD/2; //520
+    int j_top = domain.middle + domain.CubeD/2; //180
+    int j_bottom = domain.middle - domain.CubeD/2; //140
 
     // Top and bottom edges
-    for(int i = cube_start+1; i < cube_end; i++) {
-        // Top edge (j_top)
-        long double f4 = params.f[index3D(4, i, j_top)];
-        long double f7 = params.f[index3D(7, i, j_top)];
-        long double f8 = params.f[index3D(8, i, j_top)];
-        params.f[index3D(2,i,j_top)] = f4;
-        params.f[index3D(5,i,j_top)] = f7;
-        params.f[index3D(6,i,j_top)] = f8;
+    for(int i = cube_start + 1; i < cube_end; i++) { // Exclude corners
+        // Top edge
+        params.f[index3D(2,i,j_top)] = params.f[index3D(4, i, j_top)];
+        params.f[index3D(5,i,j_top)] = params.f[index3D(7, i, j_top)];
+        params.f[index3D(6,i,j_top)] = params.f[index3D(8, i, j_top)];
 
-        // Bottom edge (j_bottom)
-        long double f2 = params.f[index3D(2, i, j_bottom)];
-        long double f6 = params.f[index3D(6, i, j_bottom)];
-        long double f5 = params.f[index3D(5, i, j_bottom)];
-        params.f[index3D(4,i,j_bottom)] = f2;
-        params.f[index3D(8,i,j_bottom)] = f6;
-        params.f[index3D(7,i,j_bottom)] = f5;
+        // Bottom edge
+        params.f[index3D(4,i,j_bottom)] = params.f[index3D(2, i, j_bottom)];
+        params.f[index3D(8,i,j_bottom)] = params.f[index3D(6, i, j_bottom)];
+        params.f[index3D(7,i,j_bottom)] = params.f[index3D(5, i, j_bottom)];
     }
 
     // Left and right edges
-    for(int j = j_bottom+1; j < j_top; j++) {
-        // Left edge (cube_start)
-        long double f1 = params.f[index3D(1, cube_start, j)];
-        long double f8 = params.f[index3D(8, cube_start, j)];
-        long double f5 = params.f[index3D(5, cube_start, j)];
-        params.f[index3D(3,cube_start,j)] = f1;
-        params.f[index3D(6,cube_start,j)] = f8;
-        params.f[index3D(7,cube_start,j)] = f5;
+    for(int j = j_bottom + 1; j < j_top; j++) { // Exclude corners
+        // Left edge
+        params.f[index3D(3,cube_start,j)] = params.f[index3D(1, cube_start, j)];
+        params.f[index3D(6,cube_start,j)] = params.f[index3D(8, cube_start, j)];
+        params.f[index3D(7,cube_start,j)] = params.f[index3D(5, cube_start, j)];
 
-        // Right edge (cube_end)
-        long double f3 = params.f[index3D(3, cube_end, j)];
-        long double f6 = params.f[index3D(6, cube_end, j)];
-        long double f7 = params.f[index3D(7, cube_end, j)];
-        params.f[index3D(1,cube_end,j)] = f3;
-        params.f[index3D(8,cube_end,j)] = f6;
-        params.f[index3D(5,cube_end,j)] = f7;
+        // Right edge
+        params.f[index3D(1,cube_end,j)] = params.f[index3D(3, cube_end, j)];
+        params.f[index3D(8,cube_end,j)] = params.f[index3D(6, cube_end, j)];
+        params.f[index3D(5,cube_end,j)] = params.f[index3D(7, cube_end, j)];
     }
 
-    //Dealing with corners
-    params.f[index3D(7,cube_start,j_bottom)] = params.f[index3D(5,cube_start,j_bottom)];
-    params.f[index3D(6,cube_start,j_top)] = params.f[index3D(8,cube_start,j_top)];
-    params.f[index3D(5,cube_end,j_top)] = params.f[index3D(7,cube_end,j_top)];
-    params.f[index3D(8,cube_end,j_bottom)] = params.f[index3D(6,cube_end,j_bottom)];
+    // Handle corners explicitly
+    // Top-left (480,180)
+    params.f[index3D(6, cube_start, j_top)] = params.f[index3D(8, cube_start, j_top)];
+    params.f[index3D(3, cube_start, j_top)] = params.f[index3D(1, cube_start, j_top)];
+    params.f[index3D(2, cube_start, j_top)] = params.f[index3D(4, cube_start, j_top)];
+
+    // Top-right (520,180)
+    params.f[index3D(8, cube_end, j_top)] = params.f[index3D(6, cube_end, j_top)];
+    params.f[index3D(1, cube_end, j_top)] = params.f[index3D(3, cube_end, j_top)];
+    params.f[index3D(2, cube_end, j_top)] = params.f[index3D(4, cube_end, j_top)];
+
+    // Bottom-left (480,140)
+    params.f[index3D(7, cube_start, j_bottom)] = params.f[index3D(5, cube_start, j_bottom)];
+    params.f[index3D(3, cube_start, j_bottom)] = params.f[index3D(1, cube_start, j_bottom)];
+    params.f[index3D(4, cube_start, j_bottom)] = params.f[index3D(2, cube_start, j_bottom)];
+
+    // Bottom-right (520,140)
+    params.f[index3D(5, cube_end, j_bottom)] = params.f[index3D(7, cube_end, j_bottom)];
+    params.f[index3D(1, cube_end, j_bottom)] = params.f[index3D(3, cube_end, j_bottom)];
+    params.f[index3D(4, cube_end, j_bottom)] = params.f[index3D(2, cube_end, j_bottom)];
 }
 
 void MacroRecover(LBMParams& params, const DomainParams& dim, bool isCube) {
@@ -287,11 +304,9 @@ void MacroRecover(LBMParams& params, const DomainParams& dim, bool isCube) {
             params.v[index2d(i,j)] = vsum/params.rho[index2d(i,j)];
         }
     }
-
     if (isCube) {
-    #pragma omp parallel for collapse(2)
-        for(int j= dim.middle - (dim.CubeD/2); j < dim.middle + (dim.CubeD/2);j++){
-            for(int i = dim.L1 - (dim.CubeD/2); i < dim.L1+(dim.CubeD/2); i++){
+        for (int i =480 ; i <= 520; i++) {
+            for (int j = 140; j <= 180; j++) {
                 params.u[index2d(i,j)] = 0.0;
                 params.v[index2d(i,j)] = 0.0;
             }
@@ -301,9 +316,9 @@ void MacroRecover(LBMParams& params, const DomainParams& dim, bool isCube) {
 
 void ComputeForces(LBMParams& params, const DomainParams& domain, SimulationStats& stats) {
     int cube_start = domain.L1 - domain.CubeD/2 - 1;
-    int cube_end = domain.L1 + domain.CubeD/2;
-    int j_top = domain.middle + domain.CubeD/2 + 1;
-    int j_bottom = domain.middle - domain.CubeD/2;
+    int cube_end = domain.L1 + domain.CubeD/2 ;
+    int j_top = domain.middle + domain.CubeD/2;
+    int j_bottom = domain.middle - domain.CubeD/2 -1  ;
 
     stats.Fx = 0.0;
     stats.Fy = 0.0;
@@ -311,18 +326,18 @@ void ComputeForces(LBMParams& params, const DomainParams& domain, SimulationStat
     // =================================================
     // Forças nas bordas superiores e inferiores
     // =================================================
-    for(int i = cube_start + 1; i < cube_end; i++) {
+    for(int i = 480; i <= 520 ; i++) {
         // Borda superior (j_top)
-        long double f4 = params.f[index3D(4, i, j_top)];
-        long double f7 = params.f[index3D(7, i, j_top)];
-        long double f8 = params.f[index3D(8, i, j_top)];
+        long double f4 = params.f[index3D(4, i, 180)];
+        long double f7 = params.f[index3D(7, i, 180)];
+        long double f8 = params.f[index3D(8, i, 180)];
         stats.Fx += 2.0 * (f7*(-1.0) + f8*(1.0));  // ΔFx = 2*(f7*(-cx[7]) + f8*(cx[8]))
         stats.Fy += 2.0 * (f4*(-1.0) + f7*(-1.0) + f8*(-1.0)); // ΔFy = 2*(f4*cy[4] + f7*cy[7] + f8*cy[8])
 
         // Borda inferior (j_bottom)
-        long double f2 = params.f[index3D(2, i, j_bottom)];
-        long double f5 = params.f[index3D(5, i, j_bottom)];
-        long double f6 = params.f[index3D(6, i, j_bottom)];
+        long double f2 = params.f[index3D(2, i, 140)];
+        long double f5 = params.f[index3D(5, i, 140)];
+        long double f6 = params.f[index3D(6, i, 140)];
         stats.Fx += 2.0 * (f6*(-1.0) + f5*(1.0));  // ΔFx = 2*(f6*(-cx[6]) + f5*(cx[5]))
         stats.Fy += 2.0 * (f2*(1.0) + f6*(1.0) + f5*(1.0)); // ΔFy = 2*(f2*cy[2] + f6*cy[6] + f5*cy[5])
     }
@@ -330,18 +345,18 @@ void ComputeForces(LBMParams& params, const DomainParams& domain, SimulationStat
     // =================================================
     // Forças nas bordas laterais (esquerda e direita)
     // =================================================
-    for(int j = j_bottom + 1; j < j_top; j++) {
+    for(int j = 140; j <= 180; j++) {
         // Borda esquerda (cube_start)
-        long double f1 = params.f[index3D(1, cube_start, j)];
-        long double f5 = params.f[index3D(5, cube_start, j)];
-        long double f8 = params.f[index3D(8, cube_start, j)];
+        long double f1 = params.f[index3D(1, 480, j)];
+        long double f5 = params.f[index3D(5, 480, j)];
+        long double f8 = params.f[index3D(8, 480, j)];
         stats.Fx += 2.0 * (f1*(1.0) + f5*(1.0) + f8*(1.0)); // ΔFx = 2*(f1*cx[1] + f5*cx[5] + f8*cx[8])
         stats.Fy += 2.0 * (f8*(-1.0) + f5*(1.0)); // ΔFy = 2*(f8*cy[8] + f5*cy[5])
 
         // Borda direita (cube_end)
-        long double f3 = params.f[index3D(3, cube_end, j)];
-        long double f6 = params.f[index3D(6, cube_end, j)];
-        long double f7 = params.f[index3D(7, cube_end, j)];
+        long double f3 = params.f[index3D(3, 520, j)];
+        long double f6 = params.f[index3D(6, 520, j)];
+        long double f7 = params.f[index3D(7, 520, j)];
         stats.Fx += 2.0 * (f3*(-1.0) + f6*(-1.0) + f7*(-1.0)); // ΔFx = 2*(f3*cx[3] + f6*cx[6] + f7*cx[7])
         stats.Fy += 2.0 * (f6*(1.0) + f7*(-1.0)); // ΔFy = 2*(f6*cy[6] + f7*cy[7])
     }
@@ -350,22 +365,22 @@ void ComputeForces(LBMParams& params, const DomainParams& domain, SimulationStat
     // Forças nas quinas do cubo (contribuição adicional)
     // =================================================
     // Quina Inferior-Esquerda (cube_start, j_bottom)
-    long double f5_corner = params.f[index3D(5, cube_start, j_bottom)];
+    long double f5_corner = params.f[index3D(5,480,140)];
     stats.Fx += 2.0 * f5_corner * 1.0;  // cx[5] = 1
     stats.Fy += 2.0 * f5_corner * 1.0;  // cy[5] = 1
 
     // Quina Superior-Esquerda (cube_start, j_top)
-    long double f8_corner = params.f[index3D(8, cube_start, j_top)];
+    long double f8_corner = params.f[index3D(8,480,180)];
     stats.Fx += 2.0 * f8_corner * 1.0;   // cx[8] = 1
     stats.Fy += 2.0 * f8_corner * (-1.0); // cy[8] = -1
 
     // Quina Superior-Direita (cube_end, j_top)
-    long double f7_corner = params.f[index3D(7, cube_end, j_top)];
+    long double f7_corner = params.f[index3D(7,520,180)];
     stats.Fx += 2.0 * f7_corner * (-1.0); // cx[7] = -1
     stats.Fy += 2.0 * f7_corner * (-1.0); // cy[7] = -1
 
     // Quina Inferior-Direita (cube_end, j_bottom)
-    long double f6_corner = params.f[index3D(6, cube_end, j_bottom)];
+    long double f6_corner = params.f[index3D(6,520,140)];
     stats.Fx += 2.0 * f6_corner * (-1.0); // cx[6] = -1
     stats.Fy += 2.0 * f6_corner * 1.0;    // cy[6] = 1
 }
@@ -406,8 +421,8 @@ void saveForce(SimulationStats& stats, const int time, int step){
 int main() {
     int CubeD = 40, L1 = 500;
 
-    int ReSet = 50;
-    double alpha = 0.1;
+    int ReSet = 60;
+    double alpha = 0.03;
 
     LBMParams params(Nx, Ny, K);
     params.uo = ReSet * alpha / CubeD;
@@ -416,6 +431,7 @@ int main() {
 
     DomainParams domainParams(CubeD, L1, Ny);
 
+
     SimulationStats stats;
 
     std::cout << "Re = " << ReSet << " ; Max. Velocity = " << params.uo << std::endl;
@@ -423,21 +439,20 @@ int main() {
 
 
 
-    Initialize(params);
+    Initialize(params,true);
     int mstep = 0;
 
     //Start clock
     auto start = std::chrono::high_resolution_clock::now();
 
-    while (mstep < 200000) {
+    while (mstep < 200001) {
         params.f_last = params.f;
 
         Colision(params);
         Streaming(params);
         Boundary(params);
         ComputeForces(params,domainParams,stats);
-        CubeBDC(params, domainParams);
-
+        CubeBDC(params,domainParams);
         MacroRecover(params,domainParams,true);
 
         stats.calculateMassFlow(params);
