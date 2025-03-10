@@ -7,6 +7,7 @@
 #include <vector>
 #include <thread> // Required for sleep_for
 #include <chrono> // Required for duration literals
+#include <iomanip>
 
 
 constexpr int Nx = 2001;
@@ -22,16 +23,17 @@ inline int index3D(int k, int i, int j) {
 }
 
 struct LBMParams {
-    int Nx, Ny, K;
+    int Nx, Ny, K, counter;
     double omega, uo, rhoo;
     std::vector<long double> f, feq, f_last, f_temp, rho, u, v;
     std::vector<double> cx, cy, w;
     std::vector<bool> isSolid;
+    bool stableFlow, activation;
 
     LBMParams(int nx, int ny, int k) : Nx(nx), Ny(ny), K(k),
         f(K * Nx * Ny, 0.0), feq(K * Nx * Ny, 0.0), f_last(K * Nx * Ny, 0.0),
         f_temp(K * Nx * Ny, 0.0), rho(Nx * Ny, 0.0), u(Nx * Ny, 0.0), v(Nx * Ny, 0.0),
-        cx(K), cy(K), w(K), omega(), uo(), rhoo(), isSolid(Nx*Ny,false){
+        cx(K), cy(K), w(K), omega(), uo(), rhoo(), isSolid(Nx*Ny,false),stableFlow(false), activation(false),counter(0){
 
         cx = {0.0, 1.0, 0.0, -1.0, 0.0, 1.0, -1.0, -1.0, 1.0};
         cy = {0.0, 0.0, 1.0, 0.0, -1.0, 1.0, 1.0, -1.0, -1.0};
@@ -116,20 +118,31 @@ struct SimulationStats {
 };
 
 void Initialize(LBMParams& params, bool Parabolic) {
+    for (int i = 480 ; i <= 520; i++) {
+        for (int j = 140; j <= 180 ; j++) {
+            params.isSolid[index2d(i,j)] = true;
+        }
+    }
     //Initializing arrays
     if (Parabolic) {
         for (int j = 0; j < Ny; j++) {
             long double uinit = (6.0 * params.uo * (2.0 / 3.0)) / ((Ny-1) * (Ny-1)) * j * ((Ny-1) - j);
             for (int i = 0; i < Nx; i++) {
-                params.rho[index2d(i, j)] = params.rhoo;
-                params.u[index2d(i, j)] = uinit;
-                params.v[index2d(i, j)] = 0.0;
+                if (!params.isSolid[index2d(i,j)]) {
+                    params.rho[index2d(i, j)] = params.rhoo;
+                    params.u[index2d(i, j)] = uinit;
+                    params.v[index2d(i, j)] = 0.0;
 
-                long double t1 = params.u[index2d(i,j)] * params.u[index2d(i,j)] + params.v[index2d(i,j)] * params.v[index2d(i,j)];
-                for (int k = 0; k < K; k++) {
-                    long double t2 = params.u[index2d(i,j)] * params.cx[k] + params.v[index2d(i,j)] * params.cy[k];
-                    params.feq[index3D(k, i, j)] = params.rho[index2d(i, j)] * params.w[k] * (1.0 + 3.0 * t2 + 4.5 * t2 * t2 - 1.5 * t1);
-                    params.f[index3D(k, i, j)] = params.feq[index3D(k, i, j)];
+                    long double t1 = params.u[index2d(i,j)] * params.u[index2d(i,j)] + params.v[index2d(i,j)] * params.v[index2d(i,j)];
+                    for (int k = 0; k < K; k++) {
+                        long double t2 = params.u[index2d(i,j)] * params.cx[k] + params.v[index2d(i,j)] * params.cy[k];
+                        params.feq[index3D(k, i, j)] = params.rho[index2d(i, j)] * params.w[k] * (1.0 + 3.0 * t2 + 4.5 * t2 * t2 - 1.5 * t1);
+                        params.f[index3D(k, i, j)] = params.feq[index3D(k, i, j)];
+                    }
+                }else {
+                    params.rho[index2d(i, j)] = params.rhoo;
+                    params.u[index2d(i, j)] = 0.0;
+                    params.v[index2d(i, j)] = 0.0;
                 }
             }
         }
@@ -153,18 +166,20 @@ void Colision(LBMParams& params) {
     #pragma omp parallel for collapse(2)
     for(int j=0; j < Ny; j++){
         for(int i=0; i < Nx; i++){
-            long double t1 = params.u[index2d(i,j)] * params.u[index2d(i,j)] + params.v[index2d(i,j)] * params.v[index2d(i,j)];
-            for(int k=0; k < K; k++){
-                long double t2 = params.u[index2d(i,j)]*params.cx[k]+params.v[index2d(i,j)]*params.cy[k];
-                params.feq[index3D(k,i,j)] = params.rho[index2d(i,j)]*params.w[k]*(1.0+3.0*t2+4.5*t2*t2-1.5*t1);
-                params.f[index3D(k,i,j)]=params.omega*params.feq[index3D(k,i,j)]+(1.0-params.omega)*params.f[index3D(k,i,j)]; //Relaxation Step
+            if (!params.isSolid[index2d(i,j)]) {
+                long double t1 = params.u[index2d(i,j)] * params.u[index2d(i,j)] + params.v[index2d(i,j)] * params.v[index2d(i,j)];
+                for(int k=0; k < K; k++){
+                    long double t2 = params.u[index2d(i,j)]*params.cx[k]+params.v[index2d(i,j)]*params.cy[k];
+                    params.feq[index3D(k,i,j)] = params.rho[index2d(i,j)]*params.w[k]*(1.0+3.0*t2+4.5*t2*t2-1.5*t1);
+                    params.f[index3D(k,i,j)]=params.omega*params.feq[index3D(k,i,j)]+(1.0-params.omega)*params.f[index3D(k,i,j)]; //Relaxation Step
+                }
             }
         }
     }
 }
 
 void Streaming(LBMParams& params) {
-    std::vector<int> ops_k = {0,3,4,1,2,7,8,5,6};
+    static const std::vector<int> ops_k = {0,3,4,1,2,7,8,5,6};
 #pragma omp parallel for collapse(2)
     for(int i = 0; i < Nx; i++) {
         for(int j = 0; j < Ny; j++) {
@@ -172,14 +187,20 @@ void Streaming(LBMParams& params) {
                 int xx = i + params.cx[k];
                 int yy = j + params.cy[k];
 
-                if (xx < 0 || xx > Nx-1) continue;
-                if (yy < 0 || yy > Ny-1) continue;
+                if (xx < 0) xx = Nx-1;
+                if (yy < 0) yy = Ny-1;
+                if (xx > Nx-1) xx = 0;
+                if (yy > Ny-1) yy = 0;
 
-                params.f_temp[index3D(k,xx,yy)] = params.f[index3D(k,i,j)];
+                if (!params.isSolid[index2d(xx,yy)] && !params.isSolid[index2d(i,j)]) {
+                    params.f_temp[index3D(k,xx,yy)] = params.f[index3D(k,i,j)];
+                }else {
+                    params.f_temp[index3D(ops_k[k],i,j)] = params.f[index3D(k,i,j)];
+                }
             }
         }
     }
-    params.f = params.f_temp;
+    params.f.swap(params.f_temp);
 }
 
 void Boundary(LBMParams& params) {
@@ -189,7 +210,6 @@ void Boundary(LBMParams& params) {
         // Corrected density formula (1 - vx[j])
         long double rhow = (params.f[index3D(0,0,j)] + params.f[index3D(2,0,j)] + params.f[index3D(4,0,j)]
                 + 2 * (params.f[index3D(3,0,j)] + params.f[index3D(6,0,j)] + params.f[index3D(7,0,j)])) / (1 - vx);
-
 
         // Set incoming distributions (f3, f6, f7)
         params.f[index3D(1,0,j)] = params.f[index3D(3,0,j)] + (2.0/3.0) * rhow * vx;
@@ -291,24 +311,18 @@ void MacroRecover(LBMParams& params, const DomainParams& dim, bool isCube) {
     //Recovering macroscopic properties
     for (int j = 0; j < Ny; j++) {
         for(int i=0; i < Nx; i++) {
-            ssum = 0;
-            usum = 0;
-            vsum = 0;
-            for(int k=0; k < K; k++){
-                ssum = ssum + params.f[index3D(k,i,j)];
-                usum = usum + params.f[index3D(k,i,j)]*params.cx[k];
-                vsum = vsum + params.f[index3D(k,i,j)]*params.cy[k];
-            }
-            params.rho[index2d(i,j)] = ssum;
-            params.u[index2d(i,j)] = usum/params.rho[index2d(i,j)];
-            params.v[index2d(i,j)] = vsum/params.rho[index2d(i,j)];
-        }
-    }
-    if (isCube) {
-        for (int i =480 ; i <= 520; i++) {
-            for (int j = 140; j <= 180; j++) {
-                params.u[index2d(i,j)] = 0.0;
-                params.v[index2d(i,j)] = 0.0;
+            if (!params.isSolid[index2d(i,j)]) {
+                ssum = 0;
+                usum = 0;
+                vsum = 0;
+                for(int k=0; k < K; k++){
+                    ssum = ssum + params.f[index3D(k,i,j)];
+                    usum = usum + params.f[index3D(k,i,j)]*params.cx[k];
+                    vsum = vsum + params.f[index3D(k,i,j)]*params.cy[k];
+                }
+                params.rho[index2d(i,j)] = ssum;
+                params.u[index2d(i,j)] = usum/params.rho[index2d(i,j)];
+                params.v[index2d(i,j)] = vsum/params.rho[index2d(i,j)];
             }
         }
     }
@@ -418,18 +432,62 @@ void saveForce(SimulationStats& stats, const int time, int step){
     }
 }
 
-int main() {
-    int CubeD = 40, L1 = 500;
+void Pertubation(LBMParams& params) {
+    for (int i = 0; i < Nx; i++) {
+        for (int j = 0; j < Ny; j++) {
+            if (!params.isSolid[index2d(i,j)]) {
+                params.v[index2d(i,j)] = params.uo * 0.05 * sin(2.0 * M_PI * ((i) / (Nx-1) + 1.0 / 4.0));
+            }
+        }
+    }
+}
 
-    int ReSet = 60;
-    double alpha = 0.03;
+void SaveVTK(int timestep, const LBMParams& params) {
+
+    // Format the filename with timestep
+    std::ostringstream filename;
+    filename << "velocity/field" << std::setw(5) << std::setfill('0') << timestep << ".vtk";
+
+    std::ofstream file(filename.str());
+    if (!file) {
+        std::cerr << "Error opening file: " << filename.str() << std::endl;
+        return;
+    }
+
+    // Write the VTK file header
+    file << "# vtk DataFile Version 3.0" << std::endl;
+    file << "LBM Output" << std::endl;
+    file << "ASCII" << std::endl;
+    file << "DATASET STRUCTURED_POINTS" << std::endl;
+    file << "DIMENSIONS " << params.Nx << " " << params.Ny << " 1" << std::endl;
+    file << "ORIGIN 0 0 0" << std::endl;
+    file << "SPACING 1 1 1" << std::endl;
+    file << "POINT_DATA " << params.Nx * params.Ny << std::endl;
+
+    // Save velocity field as vectors
+    file << "VECTORS Velocity float" << std::endl;
+    for (int j = 0; j < params.Ny; j++) {
+        for (int i = 0; i < params.Nx; i++) {
+            file << params.u[index2d(i, j)] << " "
+                 << params.v[index2d(i, j)] << " 0.0" << std::endl;
+        }
+    }
+
+    file.close();
+}
+
+int main() {
+    constexpr int CubeD = 40, L1 = 500;
+
+    constexpr int ReSet = 60;
+    constexpr double alpha = 0.1;
 
     LBMParams params(Nx, Ny, K);
     params.uo = ReSet * alpha / CubeD;
     params.rhoo = 1.0;
     params.omega = 1.0/(3.*alpha+0.5);
 
-    DomainParams domainParams(CubeD, L1, Ny);
+    DomainParams const domainParams(CubeD, L1, Ny);
 
 
     SimulationStats stats;
@@ -441,26 +499,31 @@ int main() {
 
     Initialize(params,true);
     int mstep = 0;
-
     //Start clock
-    auto start = std::chrono::high_resolution_clock::now();
+    auto const start = std::chrono::high_resolution_clock::now();
 
-    while (mstep < 200001) {
+    while (mstep < 100001) {
         params.f_last = params.f;
 
+        if (stats.relativeDifference < 1e-5 && !params.activation) {
+            Pertubation(params);
+            params.activation = true;
+        }
         Colision(params);
         Streaming(params);
         Boundary(params);
-        ComputeForces(params,domainParams,stats);
-        CubeBDC(params,domainParams);
+        //ComputeForces(params,domainParams,stats);
         MacroRecover(params,domainParams,true);
 
         stats.calculateMassFlow(params);
         stats.computeRelativeDifference(params);
         stats.calculateCoefficients(params,domainParams);
 
-        saveField(params,mstep,500);
-        saveForce(stats,mstep,50);
+        //saveField(params,mstep,500);
+        if (mstep % 500 == 0) {
+            SaveVTK(mstep, params);
+        }
+        //saveForce(stats,mstep,500);
 
         std::cout << "Step:" << mstep <<"\t\tDensity-> "<<params.rho[index2d(Nx/2,Ny/2)]<<
             "\t\tVel. Vectors -> " << params.u[index2d(Nx/2,Ny/2)] << "\t" << params.v[index2d(Nx/2,Ny/2)] << "\t" <<
@@ -471,8 +534,8 @@ int main() {
         stats.reset();
         mstep += 1;
     }
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> duration = end - start;
+    auto const end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> const duration = end - start;
     std::cout << "Execution time: " << duration.count() << " seconds" << std::endl;
     std::cout << "END OF SIMULATION!" << std::endl;
     return 0;
