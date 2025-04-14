@@ -8,10 +8,13 @@
 #include <thread> // Required for sleep_for
 #include <chrono> // Required for duration literals
 #include <iomanip>
+#include <algorithm> // para std::max_element
+#include <cassert>
 
-
-constexpr int Nx = 2000;
-constexpr int Ny = 320;
+constexpr int CubeD = 40;
+constexpr int Nx = 50*CubeD;
+constexpr int Ny = 8*CubeD;
+constexpr int L1 = 12.5*CubeD;
 constexpr int K = 9;
 
 inline int index2d(int i, int j) {
@@ -20,6 +23,11 @@ inline int index2d(int i, int j) {
 
 inline int index3D(int k, int i, int j) {
     return k * Nx * Ny + i * Ny + j;
+}
+
+inline int oppositeDirection(int k) {
+    static const int opp[9] = {0, 3, 4, 1, 2, 7, 8, 5, 6};
+    return opp[k];
 }
 
 struct LBMParams {
@@ -124,6 +132,7 @@ void Initialize(LBMParams &params, const DomainParams &geometry, bool Parabolic,
         }
     }
 
+
     for (int i = 0; i < Nx; i++) {
         params.isSolid[index2d(i, 0)] = true;
         params.isSolid[index2d(i, Ny - 1)] = true;
@@ -132,7 +141,7 @@ void Initialize(LBMParams &params, const DomainParams &geometry, bool Parabolic,
     //Initializing arrays
     if (Parabolic) {
         for (int j = 0; j < Ny; j++) {
-            double uinit = params.uo * (1.0 - std::pow((j - 160.0) / 160.0, 2));
+            double uinit = params.uo * (1.0 - std::pow((j-geometry.middle)/geometry.middle,2));
             //std::cout << j << " " << uinit << std::endl;
             for (int i = 0; i < Nx; i++) {
                 if (!params.isSolid[index2d(i, j)]) {
@@ -199,125 +208,69 @@ void Colision(LBMParams &params) {
 
 void Streaming(LBMParams &params, SimulationStats &stats) {
     static const std::vector<int> ops_k = {0, 3, 4, 1, 2, 7, 8, 5, 6};
-    #pragma omp parallel for collapse(2)
+
+#pragma omp parallel for collapse(2)
     for (int i = 0; i < Nx; i++) {
         for (int j = 0; j < Ny; j++) {
             if (params.isSolid[index2d(i, j)]) continue;
+
             for (int k = 0; k < K; k++) {
-                int xx = i + params.cx[k];
-                int yy = j + params.cy[k];
+                int ii = i - params.cx[k];
+                int jj = j - params.cy[k];
 
-                if (xx < 0) xx = Nx - 1;
-                if (yy < 0) yy = Ny - 1;
-                if (xx > Nx - 1) xx = 0;
-                if (yy > Ny - 1) yy = 0;
+                // Skip if neighbor is out of bounds
+                if (ii < 0 || ii >= Nx || jj < 0 || jj >= Ny) continue;
 
-                if (!params.isSolid[index2d(xx, yy)]) {
-                    params.f_temp[index3D(k, xx, yy)] = params.f[index3D(k, i, j)];
+                if (!params.isSolid[index2d(ii, jj)]) {
+                    // Normal streaming: pull from neighbor
+                    params.f_temp[index3D(k, i, j)] = params.f[index3D(k, ii, jj)];
                 } else {
-                    params.f_temp[index3D(ops_k[k], i, j)] = params.f[index3D(k, i, j)];
+                    // Bounce-back: reflect from current node
+                    params.f_temp[index3D(k, i, j)] = params.f[index3D(ops_k[k], i, j)];
                 }
             }
         }
     }
-    params.f.swap(params.f_temp);
+
+    // Swap buffers
+    std::swap(params.f, params.f_temp);
 }
 
 void Boundary(LBMParams &params) {
 #pragma omp parallel for
-    for (int j = 0; j < Ny; j++) {
-        // Corrected velocity profile (positive flow to the right)
-        double vx = params.uo * (1.0 - std::pow((j - 159.5) / 159.5, 2));
-        // Corrected density formula (1 - vx[j])
-        double rhow = (params.f[index3D(0, 0, j)] + params.f[index3D(2, 0, j)] + params.f[index3D(4, 0, j)]
-                       + 2 * (params.f[index3D(3, 0, j)] + params.f[index3D(6, 0, j)] + params.f[index3D(7, 0, j)])) / (
-                          1 - vx);
+    for (int j = 1; j < Ny-1; j++) {
+        double vx = (-params.uo / 25281.0) * (j - 0.5) * (j - 318.5);
+        double vy = 0.0;
 
+        // Calcular densidade com base nas direções conhecidas
+        double rhow = (params.f[index3D(0, 0, j)] + params.f[index3D(2, 0, j)] + params.f[index3D(4, 0, j)]
+                      + 2.0 * (params.f[index3D(3, 0, j)] + params.f[index3D(6, 0, j)] + params.f[index3D(7, 0, j)]))
+                     / (1.0 - vx);
         // Set incoming distributions (f3, f6, f7)
         params.f[index3D(1, 0, j)] = params.f[index3D(3, 0, j)] + (2.0 / 3.0) * rhow * vx;
-        params.f[index3D(8, 0, j)] = params.f[index3D(6, 0, j)] + 0.5 * (
-                                         params.f[index3D(2, 0, j)] - params.f[index3D(4, 0, j)]) + (1.0 / 6.0) * rhow *
-                                     vx;
-        params.f[index3D(5, 0, j)] = params.f[index3D(7, 0, j)] - 0.5 * (
-                                         params.f[index3D(2, 0, j)] - params.f[index3D(4, 0, j)]) + (1.0 / 6.0) * rhow *
-                                     vx;
-    }
-    //Convective Boundary in the Outlet
-    double U = 0.;
+        params.f[index3D(8, 0, j)] = params.f[index3D(6, 0, j)] +
+            0.5 * (params.f[index3D(2, 0, j)] - params.f[index3D(4, 0, j)]) + (1.0 / 6.0) * rhow * vx;
+        params.f[index3D(5, 0, j)] = params.f[index3D(7, 0, j)] -
+            0.5 * (params.f[index3D(2, 0, j)] - params.f[index3D(4, 0, j)]) + (1.0 / 6.0) * rhow * vx;
 
+    }
+
+    //Convective Boundary in the Outlet using Local velocity
 #pragma omp parallel for
     for (int j = 0; j < Ny; j++) {
-        double usum = 0;
+        if (params.isSolid[index2d(Nx-2,j)]) continue;
+        double usum = 0.0;
+        double rhotemp = 0.0;
         for (int k = 0; k < params.K; k++) {
-            usum = usum + params.f[index3D(k, Nx - 2, j)] * params.cx[k];
+            rhotemp += params.f[index3D(k, Nx-2, j)];
+            usum += params.f[index3D(k, Nx - 2, j)] * params.cx[k];
         }
-        U += usum / params.rho[index2d(Nx - 2, j)];
-    }
-    U = U / Ny;
-
-#pragma omp parallel for
-    for (int j = 0; j < Ny; j++) {
+        usum /= rhotemp; //Macro velocity local
         for (int k = 0; k < K; k++) {
-            params.f[index3D(k, Nx - 1, j)] = (params.f_last[index3D(k, Nx - 1, j)] + U * params.f[
-                                                   index3D(k, Nx - 2, j)]) / (1 + U);
+            params.f[index3D(k, Nx - 1, j)] = (params.f_last[index3D(k, Nx - 1, j)] + usum * params.f[
+                                                   index3D(k, Nx - 2, j)]) / (1 + usum);
         }
     }
-}
-
-void CubeBDC(LBMParams &params, const DomainParams &domain) {
-    int cube_start = domain.L1 - domain.CubeD / 2; //480
-    int cube_end = domain.L1 + domain.CubeD / 2; //520
-    int j_top = domain.middle + domain.CubeD / 2; //180
-    int j_bottom = domain.middle - domain.CubeD / 2; //140
-
-    // Top and bottom edges
-    for (int i = cube_start + 1; i < cube_end; i++) {
-        // Exclude corners
-        // Top edge
-        params.f[index3D(2, i, j_top)] = params.f[index3D(4, i, j_top)];
-        params.f[index3D(5, i, j_top)] = params.f[index3D(7, i, j_top)];
-        params.f[index3D(6, i, j_top)] = params.f[index3D(8, i, j_top)];
-
-        // Bottom edge
-        params.f[index3D(4, i, j_bottom)] = params.f[index3D(2, i, j_bottom)];
-        params.f[index3D(8, i, j_bottom)] = params.f[index3D(6, i, j_bottom)];
-        params.f[index3D(7, i, j_bottom)] = params.f[index3D(5, i, j_bottom)];
-    }
-
-    // Left and right edges
-    for (int j = j_bottom + 1; j < j_top; j++) {
-        // Exclude corners
-        // Left edge
-        params.f[index3D(3, cube_start, j)] = params.f[index3D(1, cube_start, j)];
-        params.f[index3D(6, cube_start, j)] = params.f[index3D(8, cube_start, j)];
-        params.f[index3D(7, cube_start, j)] = params.f[index3D(5, cube_start, j)];
-
-        // Right edge
-        params.f[index3D(1, cube_end, j)] = params.f[index3D(3, cube_end, j)];
-        params.f[index3D(8, cube_end, j)] = params.f[index3D(6, cube_end, j)];
-        params.f[index3D(5, cube_end, j)] = params.f[index3D(7, cube_end, j)];
-    }
-
-    // Handle corners explicitly
-    // Top-left (480,180)
-    params.f[index3D(6, cube_start, j_top)] = params.f[index3D(8, cube_start, j_top)];
-    params.f[index3D(3, cube_start, j_top)] = params.f[index3D(1, cube_start, j_top)];
-    params.f[index3D(2, cube_start, j_top)] = params.f[index3D(4, cube_start, j_top)];
-
-    // Top-right (520,180)
-    params.f[index3D(8, cube_end, j_top)] = params.f[index3D(6, cube_end, j_top)];
-    params.f[index3D(1, cube_end, j_top)] = params.f[index3D(3, cube_end, j_top)];
-    params.f[index3D(2, cube_end, j_top)] = params.f[index3D(4, cube_end, j_top)];
-
-    // Bottom-left (480,140)
-    params.f[index3D(7, cube_start, j_bottom)] = params.f[index3D(5, cube_start, j_bottom)];
-    params.f[index3D(3, cube_start, j_bottom)] = params.f[index3D(1, cube_start, j_bottom)];
-    params.f[index3D(4, cube_start, j_bottom)] = params.f[index3D(2, cube_start, j_bottom)];
-
-    // Bottom-right (520,140)
-    params.f[index3D(5, cube_end, j_bottom)] = params.f[index3D(7, cube_end, j_bottom)];
-    params.f[index3D(1, cube_end, j_bottom)] = params.f[index3D(3, cube_end, j_bottom)];
-    params.f[index3D(4, cube_end, j_bottom)] = params.f[index3D(2, cube_end, j_bottom)];
 }
 
 void MacroRecover(LBMParams &params) {
@@ -343,15 +296,15 @@ void MacroRecover(LBMParams &params) {
     }
 }
 
-void ComputeForces(LBMParams &params, SimulationStats &stats) {
+void ComputeForces(const LBMParams &params, SimulationStats &stats,const DomainParams &geometry) {
     stats.Fx = 0.0;
     stats.Fy = 0.0;
     double density = 0.0;
     double count = 0.0;
 
 #pragma omp parallel for collapse(2)
-    for (int i = 470; i < 530; i++) {
-        for (int j = 130; j < 190; j++) {
+    for (int i = geometry.L1 - (geometry.CubeD/2) -1 ; i < geometry.L1 + (geometry.CubeD/2) + 1; i++) {
+        for (int j = geometry.middle - (geometry.CubeD/2) - 1; j < geometry.middle + (geometry.CubeD/2) + 1; j++){
             if (params.isSolid[index2d(i, j)]) continue;
             for (int k = 0; k < K; k++) {
                 int xx = i + params.cx[k];
@@ -404,16 +357,6 @@ void saveForce(SimulationStats &stats, const int time, int step) {
     }
 }
 
-void Pertubation(LBMParams &params) {
-    for (int i = 0; i < Nx; i++) {
-        for (int j = 0; j < Ny; j++) {
-            if (!params.isSolid[index2d(i, j)]) {
-                params.v[index2d(i, j)] = -params.uo * 0.05 * sin(2.0 * M_PI * ((i+0.5) /Nx + 1.0 / 4.0));
-            }
-        }
-    }
-}
-
 void SaveVTK(int timestep, const LBMParams &params) {
     // Format the filename with timestep
     std::ostringstream filename;
@@ -459,14 +402,19 @@ void SaveVTK(int timestep, const LBMParams &params) {
 }
 
 int main() {
-    constexpr int CubeD = 40, L1 = 500;
+    std::cout << "####Geometrical Problem####"<< std::endl;
+    std::cout << "Domain dimension: "<< Nx << "x"<< Ny << std::endl;
+    std::cout << "Cube: "<< CubeD << " Position: "<< L1 << "\n";
+    std::cout << "####Simulation specs####"<< std::endl;
 
-    constexpr int ReSet = 70;
+    constexpr int ReSet = 150;
 
     LBMParams params(Nx, Ny, K);
 
-    params.uo = 0.09/sqrt(3); //Keeping Mach number below 0.1
-    const double alpha = params.uo*CubeD/ReSet;
+    const double uo_final = 0.1/sqrt(3); //Keeping Mach number below 0.1
+    const double alpha = uo_final*CubeD/ReSet;
+
+    params.uo = uo_final;
 
     params.rhoo = 1.0;
     const double tau = (3. * alpha + 0.5);
@@ -477,8 +425,8 @@ int main() {
 
     SimulationStats stats;
 
-    std::cout << "Re = " << ReSet << "\t\tMax. Velocity = " << params.uo << std::endl;
-    std::cout << "Alpha = " << alpha << "\t\tMach = " << params.uo*sqrt(3) << std::endl;
+    std::cout << "Re = " << ReSet << "\t\tMax. Velocity = " << uo_final << std::endl;
+    std::cout << "Alpha = " << alpha << "\t\tMach = " << uo_final*sqrt(3) << std::endl;
     std::cout << "Omega = " << params.omega << "\t\tRelaxation Time = " << tau << std::endl;
 
 
@@ -488,10 +436,19 @@ int main() {
     auto const start = std::chrono::high_resolution_clock::now();
 
     while (mstep < 350001) {
+
+        if (mstep < 20000) {
+            double ramp_factor = 0.0001 + (0.9999 * mstep) / 20000; // Linear ramp from 0.01% to 100%
+            params.uo = uo_final * ramp_factor;
+        } else {
+            params.uo = uo_final; // After rampSteps, use full velocity
+        }
+
         params.f_last = params.f;
 
+
         Colision(params);
-        ComputeForces(params, stats);
+        ComputeForces(params, stats,domainParams);
         Streaming(params,stats);
         Boundary(params);
         MacroRecover(params);
@@ -501,7 +458,7 @@ int main() {
         stats.calculateCoefficients(params, domainParams);
 
         //saveField(params,mstep,500);
-        if (mstep % 2500 == 0) {
+        if (mstep % 1000 == 0) {
             SaveVTK(mstep, params);
         }
         saveForce(stats, mstep, 50);
