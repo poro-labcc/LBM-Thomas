@@ -11,6 +11,8 @@
 #include <algorithm> // para std::max_element
 #include <cassert>
 
+constexpr int ReSet = 200;
+
 constexpr int CubeD = 40;
 constexpr int Nx = 50*CubeD;
 constexpr int Ny = 8*CubeD;
@@ -186,7 +188,7 @@ void Initialize(LBMParams &params, const DomainParams &geometry, bool Parabolic,
     }
 }
 
-void Colision(LBMParams &params) {
+void Collision(LBMParams &params) {
 #pragma omp parallel for collapse(2)
     for (int j = 0; j < Ny; j++) {
         for (int i = 0; i < Nx; i++) {
@@ -239,36 +241,31 @@ void Streaming(LBMParams &params, SimulationStats &stats) {
 void Boundary(LBMParams &params) {
 #pragma omp parallel for
     for (int j = 1; j < Ny-1; j++) {
-        double vx = (-params.uo / 25281.0) * (j - 0.5) * (j - 318.5);
+        double vx = (-params.uo / 25281.0) * (j - 0.5) * (j - (Ny - 1.5));
         double vy = 0.0;
 
         // Calcular densidade com base nas direções conhecidas
-        double rhow = (params.f[index3D(0, 0, j)] + params.f[index3D(2, 0, j)] + params.f[index3D(4, 0, j)]
+        /*double rhow = (params.f[index3D(0, 0, j)] + params.f[index3D(2, 0, j)] + params.f[index3D(4, 0, j)]
                       + 2.0 * (params.f[index3D(3, 0, j)] + params.f[index3D(6, 0, j)] + params.f[index3D(7, 0, j)]))
-                     / (1.0 - vx);
-        // Set incoming distributions (f3, f6, f7)
-        params.f[index3D(1, 0, j)] = params.f[index3D(3, 0, j)] + (2.0 / 3.0) * rhow * vx;
-        params.f[index3D(8, 0, j)] = params.f[index3D(6, 0, j)] +
-            0.5 * (params.f[index3D(2, 0, j)] - params.f[index3D(4, 0, j)]) + (1.0 / 6.0) * rhow * vx;
-        params.f[index3D(5, 0, j)] = params.f[index3D(7, 0, j)] -
-            0.5 * (params.f[index3D(2, 0, j)] - params.f[index3D(4, 0, j)]) + (1.0 / 6.0) * rhow * vx;
+                     / (1.0 - vx);*/
 
+        double rhow = 2*params.rho[index2d(1, j)] - params.rho[index2d(2,j)];
+
+        double t1 = vx * vx + vy * vy;
+        for (int k : {1, 5, 8}) {
+            double t2 = vx * params.cx[k] + vy * params.cy[k];
+            params.f[index3D(k, 0, j)] =
+                    rhow * params.w[k] * (1.0 + 3.0 * t2 + 4.5 * t2 * t2 - 1.5 * t1);
+        }
     }
 
     //Convective Boundary in the Outlet using Local velocity
 #pragma omp parallel for
     for (int j = 0; j < Ny; j++) {
         if (params.isSolid[index2d(Nx-2,j)]) continue;
-        double usum = 0.0;
-        double rhotemp = 0.0;
-        for (int k = 0; k < params.K; k++) {
-            rhotemp += params.f[index3D(k, Nx-2, j)];
-            usum += params.f[index3D(k, Nx - 2, j)] * params.cx[k];
-        }
-        usum /= rhotemp; //Macro velocity local
         for (int k = 0; k < K; k++) {
-            params.f[index3D(k, Nx - 1, j)] = (params.f_last[index3D(k, Nx - 1, j)] + usum * params.f[
-                                                   index3D(k, Nx - 2, j)]) / (1 + usum);
+            params.f[index3D(k, Nx - 1, j)] = (params.f_last[index3D(k, Nx - 1, j)] + params.uo * params.f[
+                                                   index3D(k, Nx - 2, j)]) / (1 + params.uo);
         }
     }
 }
@@ -407,8 +404,6 @@ int main() {
     std::cout << "Cube: "<< CubeD << " Position: "<< L1 << "\n";
     std::cout << "####Simulation specs####"<< std::endl;
 
-    constexpr int ReSet = 150;
-
     LBMParams params(Nx, Ny, K);
 
     const double uo_final = 0.1/sqrt(3); //Keeping Mach number below 0.1
@@ -430,15 +425,15 @@ int main() {
     std::cout << "Omega = " << params.omega << "\t\tRelaxation Time = " << tau << std::endl;
 
 
-    Initialize(params, domainParams, true, true);
+    Initialize(params, domainParams, false, true);
     int mstep = 0;
     //Start clock
     auto const start = std::chrono::high_resolution_clock::now();
 
     while (mstep < 350001) {
 
-        if (mstep < 20000) {
-            double ramp_factor = 0.0001 + (0.9999 * mstep) / 20000; // Linear ramp from 0.01% to 100%
+        if (mstep < 15000) {
+            double ramp_factor = 0.0001 + (0.9999 * mstep) / 15000; // Linear ramp from 0.01% to 100%
             params.uo = uo_final * ramp_factor;
         } else {
             params.uo = uo_final; // After rampSteps, use full velocity
@@ -447,7 +442,7 @@ int main() {
         params.f_last = params.f;
 
 
-        Colision(params);
+        Collision(params);
         ComputeForces(params, stats,domainParams);
         Streaming(params,stats);
         Boundary(params);
