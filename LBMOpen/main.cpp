@@ -46,7 +46,7 @@ int main() {
     auto const start = std::chrono::high_resolution_clock::now();
 
     //Start simulation
-    RunSimulation(params, stats, domainParams, BoundaryConditionType::EXIT_INLET, 300);
+    RunSimulation(params, stats, domainParams, BoundaryConditionType::EXIT_INLET, OutputType::OnlyInOut, 300);
 
     // Calcular tempo de execução
     auto const end = std::chrono::high_resolution_clock::now();

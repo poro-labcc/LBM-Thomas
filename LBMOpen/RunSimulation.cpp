@@ -17,7 +17,8 @@
 #include "./PostProcess/SaveFunctions.h"
 #include "./Boundary/BoundaryConditions.h"
 
-void RunSimulation(LBMParams &params, SimulationStats &stats, const DomainParams &domainParams, BoundaryConditionType bc_type, std::optional<int> ReOnly) {
+void RunSimulation(LBMParams &params, SimulationStats &stats, const DomainParams &domainParams,
+    BoundaryConditionType bc_type, OutputType print_type, std::optional<int> ReOnly) {
     std::vector<int> Reynolds;
 
     if (ReOnly.has_value()) {
@@ -92,7 +93,12 @@ void RunSimulation(LBMParams &params, SimulationStats &stats, const DomainParams
             }
 
             if (mstep % 100 == 0) {
-                SaveVTK(mstep + re_idx * steps_per_Re, params);
+                switch (print_type) {
+                    case OutputType::All:
+                        SaveVTK(mstep + re_idx * steps_per_Re, params);
+                    case OutputType::OnlyInOut:
+                        SaveFlow(mstep + re_idx * steps_per_Re, params);
+                }
             }
 
             stats.reset();

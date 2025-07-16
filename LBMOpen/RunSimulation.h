@@ -5,9 +5,11 @@
 #include "./PostProcess/SimulationStats.h"
 #include "SimStructure/DomainParams.h"
 #include "./Boundary/BoundaryConditions.h"
+#include  "./PostProcess/SaveFunctions.h"
 #include <optional>
 
-void RunSimulation(LBMParams &params, SimulationStats &stats, const DomainParams &domainParams, BoundaryConditionType bc_type, std::optional<int> ReOnly = std::nullopt);
+void RunSimulation(LBMParams &params, SimulationStats &stats, const DomainParams &domainParams,
+    BoundaryConditionType bc_type, OutputType print_type, std::optional<int> ReOnly = std::nullopt);
 
 #endif // RUNSIMULATION_H
 

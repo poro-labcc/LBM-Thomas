@@ -147,3 +147,48 @@ void SaveVTK(int timestep, const LBMParams &params) {
     file.close();
 }
 
+void SaveFlow(int timestep, const LBMParams &params) {
+    // Format the filename with timestep
+    std::ostringstream filename;
+    filename << "velocity/fieldFlow" << std::setw(5) << std::setfill('0') << timestep << ".vtk";
+
+    std::ofstream file(filename.str());
+    if (!file) {
+        std::cerr << "Error opening file: " << filename.str() << std::endl;
+        return;
+    }
+
+    // Write the VTK file header
+    file << "# vtk DataFile Version 3.0" << std::endl;
+    file << "LBM Output" << std::endl;
+    file << "ASCII" << std::endl;
+    file << "DATASET STRUCTURED_POINTS" << std::endl;
+    file << "DIMENSIONS " << 2 << " " << params.Ny << " 1" << std::endl;
+    file << "ORIGIN 0 0 0" << std::endl;
+    file << "SPACING 1 1 1" << std::endl;
+    file << "POINT_DATA " << 2 * params.Ny << std::endl;
+
+    // Save velocity field as vectors
+    file << "VECTORS Velocity float" << std::endl;
+
+#pragma omp parallel
+    {
+        std::ostringstream localBuffer;
+
+#pragma omp for collapse(2) ordered
+        for (int j = 0; j < params.Ny; j++) {
+            for (int i :{0,params.Nx-1}) {
+                localBuffer << params.u[index2d(i, j)] << " "
+                         << params.v[index2d(i, j)] << " 0.0" << std::endl;
+
+#pragma omp ordered
+                {
+                    file << localBuffer.str();
+                    localBuffer.str("");
+                    localBuffer.clear();
+                }
+            }
+        }
+    }
+    file.close();
+}
