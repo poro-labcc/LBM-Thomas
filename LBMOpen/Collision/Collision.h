@@ -3,7 +3,8 @@
 
 #include "../SimStructure/LBMParams.h"
 
-void Collision(LBMParams &params);
+void CollisionBGK(LBMParams &params);
+void CollisionMRT(LBMParams &params);
 
 #endif // COLLISION_H
 

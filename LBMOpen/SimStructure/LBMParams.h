@@ -5,12 +5,12 @@
 #include "../SimStructure/Constants.h"
 
 struct LBMParams {
-    int Nx, Ny, K, counter;
-    double omega, uo, rhoo;
+    int Nx, Ny, K;
     std::vector<double> f, feq, f_last, f_temp, rho, u, v,dist;
     std::vector<double> cx, cy, w;
+    double omega, uo, rhoo;
     std::vector<bool> isSolid;
-    bool stableFlow, activation;
+    bool stableFlow;
 
     LBMParams(int nx, int ny, int k) ;
 };

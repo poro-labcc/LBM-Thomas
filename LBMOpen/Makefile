@@ -1,7 +1,7 @@
 # Compiler and flags
 CXX = g++
-CXXFLAGS = -std=c++17 -Wall -O3 -fopenmp -I.
-
+CXXFLAGS = -std=c++17 -Wall -fopenmp  -O3  
+#-fopenmp
 # Find all source files recursively
 SRCS := $(shell find . -name '*.cpp')
 OBJS := $(SRCS:.cpp=.o)

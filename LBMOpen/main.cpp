@@ -22,7 +22,7 @@
 int main() {
     // Configurar o número de threads OpenMP
     int num_threads = omp_get_max_threads();
-    omp_set_num_threads(num_threads);
+    omp_set_num_threads(12);
     
     std::cout << "####Geometrical Problem####"<< std::endl;
     std::cout << "Domain dimension: "<< Nx << "x"<< Ny << std::endl;
@@ -46,7 +46,7 @@ int main() {
     auto const start = std::chrono::high_resolution_clock::now();
 
     //Start simulation
-    RunSimulation(params, stats, domainParams, BoundaryConditionType::EXIT_INLET, OutputType::OnlyInOut, 300);
+    RunSimulation(params, stats, domainParams, BoundaryConditionType::SECOND_ORDER_EXTRAPOLATION, OutputType::All);
 
     // Calcular tempo de execução
     auto const end = std::chrono::high_resolution_clock::now();

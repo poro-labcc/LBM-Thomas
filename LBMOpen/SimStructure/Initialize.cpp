@@ -4,7 +4,7 @@
 
 void Initialize(LBMParams &params, const DomainParams &geometry, bool Parabolic, bool Cube) {
     // Paralelizar a inicialização do cubo
-    if (Cube) {
+    /*if (Cube) {
         double centerX = 499.5;
         double centerY = 159.5;
         double radius = geometry.CubeD / 2.0;
@@ -65,8 +65,15 @@ void Initialize(LBMParams &params, const DomainParams &geometry, bool Parabolic,
                 }
             }
         }
+    }*/
+    if (Cube) {
+        #pragma omp parallel for collapse(2)
+        for (int i = geometry.L1 - (geometry.CubeD/2); i < geometry.L1 + (geometry.CubeD/2); i++) {
+            for (int j = geometry.middle - (geometry.CubeD/2); j < geometry.middle + (geometry.CubeD/2); j++) {
+                params.isSolid[index2d(i, j)] = true;
+            }
+        }
     }
-
     // Paralelizar a inicialização das paredes
 #pragma omp parallel for
     for (int i = 0; i < Nx; i++) {
@@ -86,7 +93,7 @@ void Initialize(LBMParams &params, const DomainParams &geometry, bool Parabolic,
         for (int j = 0; j < Ny; j++) {
             for (int i = 0; i < Nx; i++) {
                 if (!params.isSolid[index2d(i, j)]) {
-                    double uinit = params.uo * (1.0 - std::pow((j-geometry.middle)/geometry.middle,2));
+                    double uinit = (-params.uo / 25281.0) * (j - 0.5) * (j - (Ny - 1.5));
                     params.rho[index2d(i, j)] = params.rhoo;
                     params.u[index2d(i, j)] = uinit;
                     params.v[index2d(i, j)] = 0.0;
@@ -112,8 +119,8 @@ void Initialize(LBMParams &params, const DomainParams &geometry, bool Parabolic,
             for (int i = 0; i < Nx; i++) {
                 if (!params.isSolid[index2d(i, j)]) {
                     params.rho[index2d(i, j)] = params.rhoo;
-                    params.u[index2d(i, j)] = 0;
-                    params.v[index2d(i, j)] = 0;
+                    params.u[index2d(i, j)] = 0.0;
+                    params.v[index2d(i, j)] = 0.0;
                     for (int k = 0; k < K; k++) {
                         params.feq[index3D(k, i, j)] = params.rho[index2d(i, j)] * params.w[k];
                         params.f[index3D(k, i, j)] = params.feq[index3D(k, i, j)];

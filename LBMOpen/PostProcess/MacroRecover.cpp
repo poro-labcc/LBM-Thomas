@@ -8,9 +8,9 @@ void MacroRecover(LBMParams &params) {
     for (int j = 0; j < Ny; j++) {
         for (int i = 0; i < Nx; i++) {
             if (!params.isSolid[index2d(i, j)]) {
-                double ssum = 0;
-                double usum = 0;
-                double vsum = 0;
+                double ssum = 0.0;
+                double usum = 0.0;
+                double vsum = 0.0;
                 for (int k = 0; k < K; k++) {
                     ssum = ssum + params.f[index3D(k, i, j)];
                     usum = usum + params.f[index3D(k, i, j)] * params.cx[k];
@@ -24,3 +24,16 @@ void MacroRecover(LBMParams &params) {
     }
 }
 
+void MacroRecoverPoint(LBMParams &params, int i, int j, double &u, double &v) {
+    double ssum = 0;
+    double usum = 0;
+    double vsum = 0;
+    for (int k = 0; k < K; k++) {
+        ssum += params.f[index3D(k, i, j)];
+        usum += params.f[index3D(k, i, j)] * params.cx[k];
+        vsum += params.f[index3D(k, i, j)] * params.cy[k];
+    }
+    double rho = ssum;
+    u = usum / rho;
+    v = vsum / rho;
+}

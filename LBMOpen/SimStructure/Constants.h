@@ -2,8 +2,8 @@
 #define CONSTANTS_H
 
 constexpr int CubeD = 40;
-constexpr int Nx = 50*CubeD;
-constexpr int Ny = 8*CubeD;
+constexpr int Nx = 2000;
+constexpr int Ny = 320;
 constexpr int L1 = 12.5*CubeD;
 constexpr int K = 9;
 
