@@ -5,6 +5,6 @@
 
 void CollisionBGK(LBMParams &params);
 void CollisionMRT(LBMParams &params);
-
+void CollisionTRT(LBMParams &params);
 #endif // COLLISION_H
 

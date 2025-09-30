@@ -22,7 +22,7 @@ $(TARGET): $(OBJS)
 
 # Clean up
 clean:
-	rm -f $(OBJS) $(TARGET) velocity/*.vtk force.txt velocity_profile*.txt density_profile*.txt
+	rm -f $(OBJS) $(TARGET) velocity/*.vtk force.txt flow.txt velocity_profile*.txt density_profile*.txt
 
 .PHONY: all clean
 

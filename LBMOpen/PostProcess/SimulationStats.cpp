@@ -10,32 +10,33 @@ SimulationStats::SimulationStats() : Fx(0), Fy(0), Cd(0.0), Cl(0.0), inletMassFl
 
 void SimulationStats::calculateMassFlow(const LBMParams &params) {
     inletMassFlow = 0.0;
-    outletMassFlow = 0.0;
-    int i = 1;
-    // Fluxo na entrada (i=0)
-#pragma omp parallel for collapse(2) reduction(+:inletMassFlow,outletMassFlow)
+
+    // Soma de todas as densidades no domínio
+#pragma omp parallel for collapse(2) reduction(+:inletMassFlow)
     for (int j = 0; j < Ny; j++) {
-        for (int k = 0; k < K; k++) {
-            inletMassFlow += params.f[index3D(k, i, j)] * params.cx[k];
-            outletMassFlow += params.f[index3D(k, Nx - 1, j)] * params.cx[k];
+        for (int i = 0; i < Nx; i++) {
+            inletMassFlow += params.rho[index2d(i,j)];
         }
     }
 }
+
 void SimulationStats::computeRelativeDifference(const LBMParams &params) {
     double norm_diff = 0.0;
-    double norm_old = 0.0;
+    double norm_old  = 0.0;
 
 #pragma omp parallel for reduction(+:norm_diff, norm_old)
-    for (size_t i = 0; i < params.f.size(); i++) {
-        norm_diff += std::abs(params.f[i] - params.f_last[i]);
-        norm_old += std::abs(params.f_last[i]);
+    for (size_t i = 0; i < params.u.size(); i++) {
+        double df = params.u[i] - params.u_old[i];
+        norm_diff += df * df;
+        norm_old  += params.u_old[i] * params.u_old[i];
     }
 
-    relativeDifference = (norm_old > 0) ? (norm_diff / norm_old) : norm_diff;
+    relativeDifference = std::sqrt(norm_diff / norm_old);
 }
 
+
 void SimulationStats::calculateCoefficients(const LBMParams &params, const DomainParams &dim) {
-    double denominator = 0.5  * params.uo * params.uo * dim.CubeD;
+    double denominator = 0.5 * params.uo * params.uo * dim.CubeD;
     if (std::abs(denominator) < 1e-10) {
         Cd = 0.0;
         Cl = 0.0;

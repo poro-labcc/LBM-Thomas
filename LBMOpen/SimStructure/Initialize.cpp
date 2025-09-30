@@ -134,4 +134,3 @@ void Initialize(LBMParams &params, const DomainParams &geometry, bool Parabolic,
         }
     }
 }
-

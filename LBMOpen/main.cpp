@@ -12,20 +12,20 @@
 #include <cassert>
 #include <optional>
 
-#include "./SimStructure/Constants.h"
-#include "./SimStructure/LBMParams.h"
-#include "./SimStructure/DomainParams.h"
-#include "./PostProcess/SimulationStats.h"
+#include "SimStructure/Constants.h"
+#include "SimStructure/LBMParams.h"
+#include "SimStructure/DomainParams.h"
+#include "PostProcess/SimulationStats.h"
 #include "RunSimulation.h"
-#include "./Boundary/BoundaryConditions.h"
+#include "Boundary/BoundaryConditions.h"
 
 int main() {
     // Configurar o número de threads OpenMP
     int num_threads = omp_get_max_threads();
-    omp_set_num_threads(12);
+    omp_set_num_threads(num_threads);
     
     std::cout << "####Geometrical Problem####"<< std::endl;
-    std::cout << "Domain dimension: "<< Nx << "x"<< Ny << std::endl;
+    std::cout << "Domain dimension: "<< Nx << "x"<< H << std::endl;
     std::cout << "Cube: "<< CubeD << " Position: "<< L1 << "\n";
     std::cout << "####Simulation specs####"<< std::endl;
     std::cout << "Running with " << num_threads << " OpenMP threads" << std::endl;
@@ -46,7 +46,7 @@ int main() {
     auto const start = std::chrono::high_resolution_clock::now();
 
     //Start simulation
-    RunSimulation(params, stats, domainParams, BoundaryConditionType::SECOND_ORDER_EXTRAPOLATION, OutputType::All);
+    RunSimulation(params, stats, domainParams, BoundaryConditionType::CONVECTIVE, OutputType::None,true,300);
 
     // Calcular tempo de execução
     auto const end = std::chrono::high_resolution_clock::now();

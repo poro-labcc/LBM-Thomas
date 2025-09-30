@@ -46,6 +46,7 @@ void Streaming(LBMParams &params, SimulationStats &stats) {
             }
         }
     }
+
     // Swap buffers
     std::swap(params.f, params.f_temp);
     std::fill(params.f_temp.begin(), params.f_temp.end(), 0.0);

@@ -1,4 +1,6 @@
 #include "./BoundaryConditions.h"
+
+#include <iostream>
 #include <omp.h>
 #include <ostream>
 #include "../SimStructure/Constants.h"
@@ -28,9 +30,10 @@ void applyConvectiveBoundaryNardelli(LBMParams &params) {
 
     double U = 0.0;
 #pragma omp parallel for
-    for (int j = 1; j < Ny-1; j++) {
+    for (int j = 0; j < Ny; j++) {
+        if (params.isSolid[index2d(Nx-2,j)]) continue;
         double u, v;
-        MacroRecoverPoint(params, Ny-2, j, u, v);
+        MacroRecoverPoint(params, Nx-2, j, u, v);
         U += u;
     }
 
@@ -55,18 +58,21 @@ void applyConvectiveBoundaryWang(LBMParams &params) {
 }
 
 void applyExitInletBoundary(LBMParams &params) {
+    int i = Nx-1;
 #pragma omp parallel for
-    for (int j = 1; j < Ny-1; j++) {
-        double rhoe = 1.0;
-        double vx = -1 + (params.f[index3D(0,Nx-1,j)] + params.f[index3D(2,Nx-1,j)] +
+    for (int j = 1; j < Ny; j++) {
+
+        double vx = params.uo * 4.0 / (H*H) * (j-0.5) * (H - (j-0.5));
+        double rhoe =  (params.f[index3D(0,Nx-1,j)] + params.f[index3D(2,Nx-1,j)] +
             params.f[index3D(4,Nx-1,j)] + 2*(params.f[index3D(1,Nx-1,j)] + params.f[index3D(5,Nx-1,j)] +
-                params.f[index3D(8,Nx-1,j)])) /rhoe;
+                params.f[index3D(8,Nx-1,j)])) /(1.0+vx);
 
         params.f[index3D(3,Nx-1,j)] = params.f[index3D(1,Nx-1,j)] - 2.0/3.0 * rhoe * vx;
-        params.f[index3D(7,Nx-1,j)] = params.f[index3D(5,Nx-1,j)] + 0.5 * (params.f[index3D(2,Nx-1,j)] -
-            params.f[index3D(4,Nx-1,j)]) - 1.0/6.0 * rhoe * vx;
-        params.f[index3D(6,Nx-1,j)] = params.f[index3D(8,Nx-1,j)] - 0.5 * (params.f[index3D(2,Nx-1,j)] -
-            params.f[index3D(4,Nx-1,j)]) - 1.0/6.0 * rhoe * vx;
+        params.f[index3D(6,i,j)] = params.f[index3D(8,i,j)] - 0.5 * (params.f[index3D(2,i,j)] -
+            params.f[index3D(4,i,j)]) - (1.0/6.0) * rhoe * vx;
+        params.f[index3D(7,i,j)] = params.f[index3D(5,i,j)] + 0.5 * (params.f[index3D(2,i,j)] -
+                params.f[index3D(4,i,j)]) - (1.0/6.0) * rhoe * vx;
+
     }
 }
 
@@ -150,10 +156,10 @@ void applyZouHeCondition(LBMParams &params) {
     int i = 0;
     double rhow = 0.0;
 #pragma omp parallel for
-    for (int j = 1; j < Ny-1; j++) {
+    for (int j = 1; j < Ny; j++) {
         //double rhow = 1.01;
         //double vx = params.uo;
-        double vx = -(4*params.uo)/((Ny-2)*(Ny-2)) * (j-0.5) * (j-Ny+1.5);
+        double vx = params.uo * 4.0 / (H*H) * (j-0.5) * (H - (j-0.5));
 
         rhow =  (params.f[index3D(0,i,j)] + params.f[index3D(2,i,j)] + params.f[index3D(4,i,j)]
             + 2*(params.f[index3D(3,i,j)] + params.f[index3D(6,i,j)] + params.f[index3D(7,i,j)]))/(1.0-vx);
@@ -170,32 +176,67 @@ void applyZouHeCondition(LBMParams &params) {
 void applyBreuerCondition(LBMParams &params) {
     int i = 0;
 #pragma omp parallel for
-    for (int j = 1; j < Ny-1; j++) {
+    for (int j = 0; j < Ny; j++) {
+        if (params.isSolid[index2d(i,j)]) continue;
         //double vx = params.uo;
-        double vx = -(4*params.uo)/((Ny-2)*(Ny-2)) * (j-0.5) * (j-Ny+1.5);
+        double vx = params.uo * 4.0 / (H*H) * (j-0.5) * (H - (j-0.5));
         double vy = 0.0;
 
-        double rhow = params.rho[index2d(i+1,j)];
+        double rhow = 2* params.rho[index2d(i+1,j)] - params.rho[index2d(i+2,j)];
 
         double t1 = vx * vx;
         for (int k : {1,5,8}) {
-            double t2 = vx * params.cx[k]; // Corrected: use vy instead of params.v[index2d(i,j)]
+            double t2 = vx * params.cx[k];
             params.f[index3D(k, i, j)] =
                     rhow * params.w[k] * (1.0 + 3.0 * t2 + 4.5 * t2 * t2 - 1.5 * t1);
         }
     }
 }
 
+void applyBreuerConditionOUT(LBMParams &params) {
+    int i = Nx-1;
+#pragma omp parallel for
+    for (int j = 0; j < Ny; j++) {
+        if (params.isSolid[index2d(i,j)]) continue;
+        //double vx = params.uo;
+        double vx = params.uo * 4.0 / (H*H) * (j-0.5) * (H - (j-0.5));
+        double vy = 0.0;
+
+        double rhow = 2* params.rho[index2d(i-1,j)] - params.rho[index2d(i-2,j)];
+
+        double t1 = vx * vx;
+        for (int k : {3,6,7}) {
+            double t2 = vx * params.cx[k];
+            params.f[index3D(k, i, j)] =
+                    rhow * params.w[k] * (1.0 + 3.0 * t2 + 4.5 * t2 * t2 - 1.5 * t1);
+        }
+    }
+}
+
+void applyFirstOrderExtrapolation(LBMParams &params) {
+#pragma omp parallel for collapse(2)
+    for (int j = 0; j < Ny; j++) {
+        for (int k : {3,6,7}) {
+            if (params.isSolid[index2d(Nx-1, j)]) continue;
+            params.f[index3D(k, Nx-1, j)] = params.f[index3D(k, Nx-2, j)];
+        }
+    }
+}
+
+
 void applyBoundaryCondition(LBMParams &params, BoundaryConditionType type) {
     switch (type) {
         case BoundaryConditionType::EMERICH:
             applyEmerichBoundary(params);
             break;
-        case BoundaryConditionType::SECOND_ORDER_EXTRAPOLATION:
+        case BoundaryConditionType::FIRST_ORD:
+            applyFirstOrderExtrapolation(params);
+            break;
+        case BoundaryConditionType::SECOND_ORD:
             applySecondOrderExtrapolationBoundary(params);
             break;
         case BoundaryConditionType::CONVECTIVE:
-            applyConvectiveBoundaryWang(params);
+            applyConvectiveBoundaryNardelli(params);
             break;
         case BoundaryConditionType::EXIT_INLET:
             applyExitInletBoundary(params);
@@ -210,7 +251,9 @@ std::string boundaryConditionToString(BoundaryConditionType type) {
     switch (type) {
         case BoundaryConditionType::EMERICH:
             return "EMERICH";
-        case BoundaryConditionType::SECOND_ORDER_EXTRAPOLATION:
+        case BoundaryConditionType::FIRST_ORD:
+            return "FIRST_ORDER_EXTRAPOLATION";
+        case BoundaryConditionType::SECOND_ORD:
             return "SECOND_ORDER_EXTRAPOLATION";
         case BoundaryConditionType::CONVECTIVE:
             return "CONVECTIVE";

@@ -79,10 +79,10 @@ void saveForce(SimulationStats &stats, const int time, int step, int Re) {
     }
 }
 
-void SaveVTK(int timestep, const LBMParams &params) {
+void SaveVTK(int timestep, int Re, const LBMParams &params) {
     // Format the filename with timestep
     std::ostringstream filename;
-    filename << "velocity/field" << std::setw(5) << std::setfill('0') << timestep << ".vtk";
+    filename << "velocity/"<< Re <<"field" << std::setw(5) << std::setfill('0') << timestep << ".vtk";
 
     std::ofstream file(filename.str());
     if (!file) {
@@ -157,7 +157,7 @@ void SaveFlow(int timestep, const SimulationStats &stats) {
     }
 
     // Save the mass flow difference with timestep
-    file << timestep << " " << stats.inletMassFlow - stats.outletMassFlow << std::endl;
+    file << timestep << " " << stats.inletMassFlow << std::endl;
 
     file.close();
 }
@@ -226,6 +226,14 @@ void salvarFAppend(LBMParams &params, const std::string &filename) {
     file.close();
 }
 
+void saveCentralLineFneq(const LBMParams &params, const std::string &filename, int timestep) {
 
+    std::ofstream fout(filename, std::ios::app); // usa "app" para acumular no mesmo arquivo
+    fout << timestep;
+    for (int i = 0; i < Nx; i++) {
+        fout << " " << params.f_neq[index2d(1,i)];
+    }
+    fout << "\n"; // separador entre timesteps
 
-
+    fout.close();
+}

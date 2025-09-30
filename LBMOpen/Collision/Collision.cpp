@@ -77,6 +77,11 @@ void CollisionBGK(LBMParams &params) {
                             params.rho[index2d(i, j)] * params.w[k] * (1.0 + 3.0 * t2 + 4.5 * t2 * t2 - 1.5 * t1);
                     params.f[index3D(k, i, j)] =
                             params.omega * params.feq[index3D(k, i, j)] + (1.0 - params.omega) * params.f[index3D(k, i, j)]; //Relaxation Step
+
+                    if (j == 30) {
+                        params.f_neq[index2d(k,i)] = params.f[index3D(k, i, j)] - params.feq[index3D(k, i, j)];
+                    }
+
                 }
             }
         }
@@ -109,6 +114,62 @@ void CollisionMRT(LBMParams &params) {
 
                 for (int k = 0; k < 9; k++)
                     params.f[index3D(k, i, j)] = f[k];
+            }
+        }
+    }
+}
+
+void CollisionTRT(LBMParams &params) {
+    double omega_p = params.omega;
+    double Lambda  = 0.25; // ajustado para estabilidade
+    double denom   = (1.0 / omega_p - 0.5);
+    double omega_m = 1.0 / (0.5 + Lambda / denom);
+
+    static const int pairs[4][2] = {{1,3},{2,4},{5,7},{6,8}};
+
+    #pragma omp parallel for collapse(2)
+    for (int j = 0; j < Ny; j++) {
+        for (int i = 0; i < Nx; i++) {
+            if (!params.isSolid[index2d(i,j)]) {
+                double rho = params.rho[index2d(i,j)];
+                double ux  = params.u[index2d(i,j)];
+                double uy  = params.v[index2d(i,j)];
+                double u2  = ux*ux + uy*uy;
+
+                // feq local
+                double feq[9];
+                for (int k = 0; k < 9; k++) {
+                    double cu = params.cx[k]*ux + params.cy[k]*uy;
+                    feq[k] = params.w[k] * rho * (1.0 + 3.0*cu + 4.5*cu*cu - 1.5*u2);
+                }
+
+                // i=0
+                params.f[index3D(0,i,j)] -= omega_p * (params.f[index3D(0,i,j)] - feq[0]);
+
+                // pares opostos
+                for (int p = 0; p < 4; p++) {
+                    int k  = pairs[p][0];
+                    int ko = pairs[p][1];
+
+                    double f_k  = params.f[index3D(k, i, j)];
+                    double f_ko = params.f[index3D(ko, i, j)];
+
+                    double feq_k  = feq[k];
+                    double feq_ko = feq[ko];
+
+                    // simétrica e anti-simétrica
+                    double f_plus  = 0.5*(f_k + f_ko);
+                    double f_minus = 0.5*(f_k - f_ko);
+
+                    double feq_plus  = 0.5*(feq_k + feq_ko);
+                    double feq_minus = 0.5*(feq_k - feq_ko);
+
+                    double post_plus  = f_plus  - omega_p * (f_plus  - feq_plus);
+                    double post_minus = f_minus - omega_m * (f_minus - feq_minus);
+
+                    params.f[index3D(k,  i, j)] = post_plus + post_minus;
+                    params.f[index3D(ko, i, j)] = post_plus - post_minus;
+                }
             }
         }
     }

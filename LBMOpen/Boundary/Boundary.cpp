@@ -5,6 +5,8 @@
 #include "./BoundaryConditions.h"
 
 void Boundary(LBMParams &params, BoundaryConditionType type) {
-    applyConvectiveBoundaryWang(params);
-    applyBreuerCondition(params);
+	//applyZouHeCondition(params);
+	applyBreuerCondition(params); //Inlet
+	applyBoundaryCondition(params, type);
+	//applyBreuerConditionOUT(params);
 }
