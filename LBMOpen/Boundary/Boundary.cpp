@@ -9,4 +9,6 @@ void Boundary(LBMParams &params, BoundaryConditionType type) {
 	applyBreuerCondition(params); //Inlet
 	applyBoundaryCondition(params, type);
 	//applyBreuerConditionOUT(params);
+	//applyRodrigo(params,"west");
+	//applyRodrigo(params,"east");
 }

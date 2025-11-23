@@ -8,7 +8,7 @@ struct LBMParams {
     int Nx, Ny, K;
     std::vector<double> f, feq, f_last, f_temp, rho, u, v,dist;
     std::vector<double> cx, cy, w, u_old;
-    double omega, uo, rhoo;
+    double omega, uo, rhoo, alpha;
     std::vector<bool> isSolid;
     bool stableFlow;
     std::vector<double> f_neq;

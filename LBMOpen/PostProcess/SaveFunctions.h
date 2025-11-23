@@ -18,5 +18,6 @@ void SaveFlow(int timestep, const SimulationStats &stats);
 void saveDistribution(int timestep, const LBMParams &params);
 void salvarFAppend(LBMParams &params, const std::string &filename);
 void saveCentralLineFneq(const LBMParams &params, const std::string &filename, int timestep);
+void ProbeP1(int Reynolds, int timestep, const LBMParams& params, int i_probe, int j_probe);
 #endif // SAVEFUNCTIONS_H
 

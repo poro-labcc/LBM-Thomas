@@ -5,6 +5,69 @@
 void Initialize(LBMParams &params, const DomainParams &geometry, bool Parabolic, bool Cube) {
     // Paralelizar a inicialização do cubo
     /*if (Cube) {
+    double centerX = 499.5;
+    double centerY = 159.5;
+    double half = geometry.CubeD / 2.0;
+
+    #pragma omp parallel for collapse(2)
+    for (int i = 0; i < Nx; i++) {
+        for (int j = 0; j < Ny; j++) {
+            double x = i;
+            double y = j;
+            if (fabs(x - centerX) <= half && fabs(y - centerY) <= half)
+                params.isSolid[index2d(i,j)] = true;
+        }
+    }
+
+    for (int i = 0; i < Nx; i++) {
+        for (int j = 0; j < Ny; j++) {
+
+            if (params.isSolid[index2d(i,j)])
+                continue;
+
+            double x0 = i;
+            double y0 = j;
+
+            for (int k = 1; k < K; k++) {
+                int inb = i + params.cx[k];
+                int jnb = j + params.cy[k];
+                if (inb < 0 || inb >= Nx || jnb < 0 || jnb >= Ny)
+                    continue;
+
+                if (params.isSolid[index2d(inb,jnb)]) {
+
+                    double dx = params.cx[k];
+                    double dy = params.cy[k];
+
+                    double tmin = 1e9;
+
+                    // interseção com cada face
+                    if (dx != 0.0) {
+                        double tx1 = (centerX - half - x0) / dx;
+                        double tx2 = (centerX + half - x0) / dx;
+                        if (tx1 > 0) tmin = std::min(tmin, tx1);
+                        if (tx2 > 0) tmin = std::min(tmin, tx2);
+                    }
+                    if (dy != 0.0) {
+                        double ty1 = (centerY - half - y0) / dy;
+                        double ty2 = (centerY + half - y0) / dy;
+                        if (ty1 > 0) tmin = std::min(tmin, ty1);
+                        if (ty2 > 0) tmin = std::min(tmin, ty2);
+                    }
+
+                    // verificar se o ponto de interseção está dentro do quadrado
+                    double xint = x0 + tmin * dx;
+                    double yint = y0 + tmin * dy;
+                    if (fabs(xint - centerX) <= half + 1e-6 && fabs(yint - centerY) <= half + 1e-6) {
+                        params.dist[index3D(k,i,j)] = tmin;
+                    }
+                }
+            }
+        }
+    }
+}*/
+
+    /*if (Cube) {
         double centerX = 499.5;
         double centerY = 159.5;
         double radius = geometry.CubeD / 2.0;
@@ -93,7 +156,7 @@ void Initialize(LBMParams &params, const DomainParams &geometry, bool Parabolic,
         for (int j = 0; j < Ny; j++) {
             for (int i = 0; i < Nx; i++) {
                 if (!params.isSolid[index2d(i, j)]) {
-                    double uinit = (-params.uo / 25281.0) * (j - 0.5) * (j - (Ny - 1.5));
+                    double uinit = params.uo * 4.0 / (H*H) * (j-0.5) * (H - (j-0.5));;
                     params.rho[index2d(i, j)] = params.rhoo;
                     params.u[index2d(i, j)] = uinit;
                     params.v[index2d(i, j)] = 0.0;
@@ -126,7 +189,7 @@ void Initialize(LBMParams &params, const DomainParams &geometry, bool Parabolic,
                         params.f[index3D(k, i, j)] = params.feq[index3D(k, i, j)];
                     }
                 } else {
-                    params.rho[index2d(i, j)] = params.rhoo;
+                    params.rho[index2d(i, j)] = params.rhoo + 1.0;
                     params.u[index2d(i, j)] = 0.0;
                     params.v[index2d(i, j)] = 0.0;
                 }

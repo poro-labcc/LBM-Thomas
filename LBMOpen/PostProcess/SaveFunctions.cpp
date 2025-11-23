@@ -164,37 +164,25 @@ void SaveFlow(int timestep, const SimulationStats &stats) {
 
 
 
-// Função para salvar todos os f_k
-void saveDistribution(int timestep, const LBMParams& params) {
-    std::string filename = "distributions_" + std::to_string(timestep) + ".vtk";
-    std::ofstream file(filename);
-
-    int nx = params.Nx;
-    int ny = params.Ny;
-
-    file << "# vtk DataFile Version 3.0\n";
-    file << "LBM distributions f_k\n";
-    file << "ASCII\n";
-    file << "DATASET STRUCTURED_POINTS\n";
-    file << "DIMENSIONS " << nx << " " << ny << " 1\n";
-    file << "ORIGIN 0 0 0\n";
-    file << "SPACING 1 1 1\n";
-    file << "POINT_DATA " << nx * ny << "\n";
-
-    // Para cada k, salva como SCALARS separado
-    for (int k = 0; k < 9; ++k) {
-        file << "SCALARS f" << k << " float 1\n";
-        file << "LOOKUP_TABLE default\n";
-
-        for (int j = 0; j < ny; ++j) {
-            for (int i = 0; i < nx; ++i) {
-                file << params.f[index3D(k,i,j)] << "\n";
-            }
-        }
+// Função para salvar as velocidades no ponto de sondagem
+void ProbeP1(int Reynold,int timestep, const LBMParams& params, int i_probe, int j_probe) {
+    std::string filename = "Re" + std::to_string(Reynold) + "_Probe.txt";
+    std::ofstream file(filename, std::ios::app);
+    if (!file) {
+        std::cerr << "Erro ao abrir flow.txt" << std::endl;
+        return;
     }
 
-    file.close();
+    // Índice linear do ponto
+    int idx = index2d(i_probe, j_probe);
+
+    // Escreve timestep e velocidades u, v
+    file << timestep << " "
+         << params.u[idx] << " "
+         << params.v[idx] << " "
+         << "0.0" << std::endl;
 }
+
 void salvarFAppend(LBMParams &params, const std::string &filename) {
     static bool header_written = false;
     std::ofstream file;

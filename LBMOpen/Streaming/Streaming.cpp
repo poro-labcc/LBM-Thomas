@@ -40,8 +40,8 @@ void Streaming(LBMParams &params, SimulationStats &stats) {
                         params.f_temp[index3D(ops_k[k], i, j)] =
                             (1.0 / (2.0 * d)) * params.f[index3D(k, i, j)] +
                             ((2.0 * d - 1.0) / (2.0 * d)) * params.f[index3D(k, i, j)];
-                    }*/
-
+                    }
+                    */
                 }
             }
         }

@@ -26,6 +26,8 @@ void applyReisBoundary(LBMParams &params);
 void applyZouHeCondition(LBMParams &params);
 void applyBreuerCondition(LBMParams &params);
 void applyBreuerConditionOUT(LBMParams &params);
+void applyRodrigo(LBMParams &params, const std::string &loc);
+
 std::string boundaryConditionToString(BoundaryConditionType type);
 
 #endif // BOUNDARYCONDITIONS_H

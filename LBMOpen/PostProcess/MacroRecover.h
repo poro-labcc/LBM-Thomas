@@ -4,6 +4,6 @@
 #include "../SimStructure/LBMParams.h"
 
 void MacroRecover(LBMParams &params);
-void MacroRecoverPoint(LBMParams &params, int i, int j, double &u, double &v);
+void MacroRecoverPoint(LBMParams &params, int i, int j, double *u= nullptr, double *v= nullptr, double *rhoP = nullptr);
 #endif // MACRORECOVER_H
 

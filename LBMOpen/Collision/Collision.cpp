@@ -1,4 +1,6 @@
 #include "./Collision.h"
+
+#include <iostream>
 #include <omp.h>
 #include "../SimStructure/Constants.h"
 
@@ -34,9 +36,9 @@ void compute_S_vector(double omega, double S[9]) {
     S[1] = 1.64;      // e
     S[2] = 1.54;      // ε
     S[3] = 0.0;       // jx
-    S[4] = 1.0;       // qx
+    S[4] = 1.2;       // qx
     S[5] = 0.0;       // jy
-    S[6] = 1.0;       // qy
+    S[6] = 1.2;       // qy
     S[7] = omega;     // pxx
     S[8] = omega;     // pxy
 }
@@ -121,7 +123,7 @@ void CollisionMRT(LBMParams &params) {
 
 void CollisionTRT(LBMParams &params) {
     double omega_p = params.omega;
-    double Lambda  = 0.25; // ajustado para estabilidade
+    double Lambda  = 0.001; // ajustado para estabilidade
     double denom   = (1.0 / omega_p - 0.5);
     double omega_m = 1.0 / (0.5 + Lambda / denom);
 
@@ -172,5 +174,32 @@ void CollisionTRT(LBMParams &params) {
                 }
             }
         }
+    }
+}
+
+void Collision(LBMParams &params, CollisionType type) {
+    switch (type) {
+        case CollisionType::BGK:
+            CollisionBGK(params);
+            break;
+        case CollisionType::MRT:
+            CollisionMRT(params);
+            break;
+        case CollisionType::TRT:
+            CollisionTRT(params);
+            break;
+    }
+}
+
+std::string CollisionToString(CollisionType type) {
+    switch (type) {
+        case CollisionType::BGK:
+            return "BGK";
+        case CollisionType::MRT:
+            return "MRT";
+        case CollisionType::TRT:
+            return "TRT";
+        default:
+            return "UNKNOWN";
     }
 }

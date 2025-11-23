@@ -1,6 +1,7 @@
 #include "./MacroRecover.h"
 #include <omp.h>
 #include "../SimStructure/Constants.h"
+#include "../Boundary/Boundary.h"
 
 void MacroRecover(LBMParams &params) {
 #pragma omp parallel for collapse(2)
@@ -24,7 +25,7 @@ void MacroRecover(LBMParams &params) {
     }
 }
 
-void MacroRecoverPoint(LBMParams &params, int i, int j, double &u, double &v) {
+void MacroRecoverPoint(LBMParams &params, int i, int j, double *u, double *v, double *rhoP) {
     double ssum = 0;
     double usum = 0;
     double vsum = 0;
@@ -34,6 +35,10 @@ void MacroRecoverPoint(LBMParams &params, int i, int j, double &u, double &v) {
         vsum += params.f[index3D(k, i, j)] * params.cy[k];
     }
     double rho = ssum;
-    u = usum / rho;
-    v = vsum / rho;
+    double uval = usum / rho;
+    double vval = vsum / rho;
+
+    if (u) *u = uval;
+    if (v) *v = vval;
+    if (rhoP) *rhoP = rho;
 }

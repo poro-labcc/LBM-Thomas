@@ -1,5 +1,6 @@
 #include "./BoundaryConditions.h"
 
+#include <cmath>
 #include <iostream>
 #include <omp.h>
 #include <ostream>
@@ -7,11 +8,27 @@
 #include "../PostProcess/MacroRecover.h"
 
 void applyEmerichBoundary(LBMParams &params) {
-#pragma omp parallel for collapse(2)
+#pragma omp parallel for
     for (int j = 0; j < Ny; j++) {
-        for (int k : {3,6,7}) {
-            if (params.isSolid[index2d(Nx-1, j)]) continue;
-            params.f[index3D(k, Nx-1, j)] = (params.rho[index2d(Nx-1,j)]/params.rho[index2d(Nx-2,j)])*params.f[index3D(k, Nx-2, j)];
+        if (params.isSolid[index2d(Nx - 1, j)]) continue;
+
+        double rhoIn = 0.0;
+
+        for (int k = 0; k < K; k++) {
+            rhoIn += params.f[index3D(k, Nx - 2, j)];
+        }
+
+        double vin = 0.0;
+        for (int k = 0; k < K; k++) {
+            vin += params.f[index3D(k, Nx - 2, j)]*params.cx[k];
+        }
+        vin /= rhoIn;
+        double rhoOut =  (params.f[index3D(0,Nx-2,j)] + params.f[index3D(2,Nx-2,j)] +
+                params.f[index3D(4,Nx-2,j)] + 2*(params.f[index3D(1,Nx-2,j)] + params.f[index3D(5,Nx-2,j)] +
+                params.f[index3D(8,Nx-2,j)])) /(1.0+vin);
+
+        for (int k: {3,6,7}) {
+            params.f[index3D(k, Nx - 1, j)] = (rhoOut / rhoIn) * params.f[index3D(k, Nx - 2, j)];
         }
     }
 }
@@ -33,7 +50,7 @@ void applyConvectiveBoundaryNardelli(LBMParams &params) {
     for (int j = 0; j < Ny; j++) {
         if (params.isSolid[index2d(Nx-2,j)]) continue;
         double u, v;
-        MacroRecoverPoint(params, Nx-2, j, u, v);
+        MacroRecoverPoint(params, Nx-2, j, &u, &v);
         U += u;
     }
 
@@ -61,20 +78,29 @@ void applyExitInletBoundary(LBMParams &params) {
     int i = Nx-1;
 #pragma omp parallel for
     for (int j = 1; j < Ny; j++) {
-
+        /*
         double vx = params.uo * 4.0 / (H*H) * (j-0.5) * (H - (j-0.5));
         double rhoe =  (params.f[index3D(0,Nx-1,j)] + params.f[index3D(2,Nx-1,j)] +
             params.f[index3D(4,Nx-1,j)] + 2*(params.f[index3D(1,Nx-1,j)] + params.f[index3D(5,Nx-1,j)] +
                 params.f[index3D(8,Nx-1,j)])) /(1.0+vx);
+        */
+        double u1, v1, rho1;
+        double u2, v2, rho2;
+        MacroRecoverPoint(params, i-1, j, &u1, &v1, &rho1);
+        MacroRecoverPoint(params, i-2, j, &u2, &v2, &rho2);
+
+        double vx = 2*u1 - u2;
+        double vy = 2*v1 - v2;
+
+        double rhoe = 2*rho1 - rho2;
 
         params.f[index3D(3,Nx-1,j)] = params.f[index3D(1,Nx-1,j)] - 2.0/3.0 * rhoe * vx;
         params.f[index3D(6,i,j)] = params.f[index3D(8,i,j)] - 0.5 * (params.f[index3D(2,i,j)] -
-            params.f[index3D(4,i,j)]) - (1.0/6.0) * rhoe * vx;
+            params.f[index3D(4,i,j)]) - (1.0/6.0) * rhoe * vx+ 0.5*rhoe*vy;
         params.f[index3D(7,i,j)] = params.f[index3D(5,i,j)] + 0.5 * (params.f[index3D(2,i,j)] -
-                params.f[index3D(4,i,j)]) - (1.0/6.0) * rhoe * vx;
-
+                params.f[index3D(4,i,j)]) - (1.0/6.0) * rhoe * vx - 0.5*rhoe*vy;
     }
-}
+} //MODIFICADA COM VYs
 
 void applyReisBoundary(LBMParams &params) {
     double ux = params.uo;
@@ -223,6 +249,30 @@ void applyFirstOrderExtrapolation(LBMParams &params) {
     }
 }
 
+void applyRodrigo(LBMParams &params, const std::string &loc) {
+    if (loc == "west") {
+#pragma omp parallel for collapse(2)
+        for (int j = 0; j < Ny; j++) {
+            for (int k : {1, 5, 8}) {
+                if (params.isSolid[index2d(0, j)]) continue;
+                params.f[index3D(k, 0, j)] =
+                    params.f[index3D(k, Nx-1, j)] +
+                    params.w[k] * (8 * params.alpha * Nx * 0.1 / (H * H * (1 / std::sqrt(3))));
+            }
+        }
+    }
+    if (loc == "east") {
+#pragma omp parallel for collapse(2)
+        for (int j = 0; j < Ny; j++) {
+            for (int k : {3, 6, 7}) {
+                if (params.isSolid[index2d(Nx - 1, j)]) continue;
+                params.f[index3D(k, Nx - 1, j)] =
+                    params.f[index3D(k, 0, j)] -
+                    params.w[k] * (8 * params.alpha * Nx * 0.1 / (H * H * (1 / std::sqrt(3))));
+            }
+        }
+    }
+}
 
 void applyBoundaryCondition(LBMParams &params, BoundaryConditionType type) {
     switch (type) {
