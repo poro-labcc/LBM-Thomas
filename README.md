@@ -7,7 +7,7 @@ This project implements the Lattice Boltzmann Method (D2Q9 model, BGK operator) 
 ## Repository structure  
 - `LBMOpen/` — Main code. Contain the files to compile and run the simulation.  
 - `ReadFiles/` — Codes to read diferent aspects of the outputs files from LBMOpen.  
-- `SimCode/` — main C++ implementation (without segmentation of functions in subfiles): initialization, collision, streaming, boundary conditions (bounce-back, prescribed velocity, convective outlet), statistics, and drag computation.  
+- `SimCode/` — main C++ implementation (without segmentation of functions in subfiles): initialization, collision, streaming, boundary conditions (bounce-back, prescribed velocity, convective outlet), statistics, and drag computation. (NOT UP TO DATE)
 - `README.md` — this file.  
 
 ## Dependencies and compilation  
