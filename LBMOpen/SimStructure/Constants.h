@@ -5,7 +5,7 @@ constexpr int RE_MAIN = 300;
 constexpr int RUN_TIME = 350000;
 constexpr int PROBE_TIME = 118;
 
-//constexpr float t = 1/(8/2.5);
+constexpr float t = 1/(8/2.5);
 constexpr int CubeD   = 40;
 constexpr int Nx      = static_cast<int>(50 * CubeD);
 

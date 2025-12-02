@@ -113,7 +113,7 @@ void RunSimulation(LBMParams &params, SimulationStats &stats, const DomainParams
                         break;
                 }
             }
-            if (stats.relativeDifference < 1e-6) break;
+            //if (stats.relativeDifference < 1e-6) break;
             stats.reset();
             mstep++;
         }
